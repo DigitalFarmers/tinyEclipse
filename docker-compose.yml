@@ -1,0 +1,90 @@
+version: "3.9"
+
+# ============================================================
+# TinyEclipse — Docker Compose (Dokploy-compatible)
+#
+# Dokploy handles:
+#   - Traefik reverse proxy (automatic HTTPS via Let's Encrypt)
+#   - Domain routing via labels
+#   - Container orchestration
+#
+# Deploy via Dokploy: Compose → paste this → set env vars → deploy
+# ============================================================
+
+services:
+  # ─── PostgreSQL + pgvector ───
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tinyeclipse
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: tinyeclipse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinyeclipse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  # ─── Backend API ───
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tinyeclipse:${DB_PASSWORD:-changeme}@db:5432/tinyeclipse
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_CHAT_MODEL: ${GROQ_CHAT_MODEL:-llama-3.3-70b-versatile}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-change-this}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://admin.tinyeclipse.nl,https://tinyeclipse.nl}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
+      RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-500}
+      CONFIDENCE_ESCALATE_THRESHOLD: ${CONFIDENCE_ESCALATE_THRESHOLD:-0.6}
+      CONFIDENCE_REFUSE_THRESHOLD: ${CONFIDENCE_REFUSE_THRESHOLD:-0.3}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.te-api.rule=Host(`${API_DOMAIN:-api.tinyeclipse.nl}`)"
+      - "traefik.http.routers.te-api.entrypoints=websecure"
+      - "traefik.http.routers.te-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.te-api.loadbalancer.server.port=8000"
+    networks:
+      - internal
+      - dokploy-network
+
+  # ─── Admin Panel ───
+  admin:
+    build: ./admin
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.tinyeclipse.nl}
+      NEXT_PUBLIC_ADMIN_KEY: ${ADMIN_API_KEY:-change-this}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.te-admin.rule=Host(`${ADMIN_DOMAIN:-admin.tinyeclipse.nl}`)"
+      - "traefik.http.routers.te-admin.entrypoints=websecure"
+      - "traefik.http.routers.te-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.te-admin.loadbalancer.server.port=3000"
+    networks:
+      - internal
+      - dokploy-network
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge
+  dokploy-network:
+    external: true

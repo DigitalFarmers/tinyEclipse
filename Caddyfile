@@ -1,0 +1,31 @@
+# ─── Development (HTTP only) ───
+# Replace with your domains for production:
+#   api.tinyeclipse.nl → backend
+#   admin.tinyeclipse.nl → admin
+
+:80 {
+    # API + Widget
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /widget/* {
+        reverse_proxy backend:8000
+    }
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    # Admin panel (everything else)
+    handle {
+        reverse_proxy admin:3000
+    }
+}
+
+# ─── Production (uncomment and set your domains) ───
+# api.tinyeclipse.nl {
+#     reverse_proxy backend:8000
+# }
+#
+# admin.tinyeclipse.nl {
+#     reverse_proxy admin:3000
+# }
