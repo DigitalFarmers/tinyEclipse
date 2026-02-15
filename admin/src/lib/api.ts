@@ -146,3 +146,156 @@ export async function getAnalytics(tenantId: string, hours = 24) {
 export async function getVisitorJourney(sessionId: string) {
   return apiFetch(`/api/track/journey/${sessionId}`);
 }
+
+// ─── Reports ───
+
+export async function getHealthReport(tenantId: string) {
+  return apiFetch(`/api/admin/reports/health/${tenantId}`);
+}
+
+export async function getPeriodicReport(tenantId: string, period: "week" | "month" = "week") {
+  return apiFetch(`/api/admin/reports/periodic/${tenantId}?period=${period}`);
+}
+
+export async function getTenantComparison() {
+  return apiFetch("/api/admin/reports/comparison/");
+}
+
+export async function getUptimeHistory(tenantId: string, days = 30) {
+  return apiFetch(`/api/admin/reports/uptime/${tenantId}?days=${days}`);
+}
+
+export async function getAlertTrends(tenantId: string, days = 30) {
+  return apiFetch(`/api/admin/reports/alert-trends/${tenantId}?days=${days}`);
+}
+
+// ─── Heartbeat ───
+
+export async function getAllHeartbeats() {
+  return apiFetch("/api/admin/heartbeat/all/");
+}
+
+export async function getHeartbeatDetail(tenantId: string) {
+  return apiFetch(`/api/admin/heartbeat/detail/${tenantId}`);
+}
+
+export async function getStaleHeartbeats(thresholdMinutes = 30) {
+  return apiFetch(`/api/admin/heartbeat/stale/?threshold_minutes=${thresholdMinutes}`);
+}
+
+// ─── Webhooks ───
+
+export async function getWebhooks() {
+  return apiFetch("/api/admin/webhooks/");
+}
+
+export async function createWebhook(data: {
+  tenant_id?: string;
+  name: string;
+  type: string;
+  url: string;
+  events?: string[];
+  secret?: string;
+}) {
+  return apiFetch("/api/admin/webhooks/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateWebhook(id: string, data: Record<string, unknown>) {
+  return apiFetch(`/api/admin/webhooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWebhook(id: string) {
+  return apiFetch(`/api/admin/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(id: string) {
+  return apiFetch(`/api/admin/webhooks/${id}/test`, { method: "POST" });
+}
+
+export async function getWebhookLogs(limit = 50) {
+  return apiFetch(`/api/admin/webhooks/logs/?limit=${limit}`);
+}
+
+// ─── Sites ───
+
+export async function registerSite(data: {
+  name: string;
+  domain: string;
+  plan?: string;
+  auto_setup?: boolean;
+}) {
+  return apiFetch("/api/admin/sites/register/", {
+    method: "POST",
+    body: JSON.stringify({ auto_setup: true, ...data }),
+  });
+}
+
+export async function registerSitesBulk(sites: Array<{
+  name: string;
+  domain: string;
+  plan?: string;
+}>) {
+  return apiFetch("/api/admin/sites/register-bulk/", {
+    method: "POST",
+    body: JSON.stringify({ sites }),
+  });
+}
+
+export async function getSitesOverview() {
+  return apiFetch("/api/admin/sites/overview/");
+}
+
+export async function deactivateSite(tenantId: string) {
+  return apiFetch(`/api/admin/sites/${tenantId}/deactivate`, { method: "POST" });
+}
+
+export async function reactivateSite(tenantId: string) {
+  return apiFetch(`/api/admin/sites/${tenantId}/reactivate`, { method: "POST" });
+}
+
+// ─── System ───
+
+export async function getPlatformHealth() {
+  return apiFetch("/api/admin/system/health/");
+}
+
+export async function getDbStats() {
+  return apiFetch("/api/admin/system/db-stats/");
+}
+
+export async function getTenantStats(tenantId: string) {
+  return apiFetch(`/api/admin/system/tenant-stats/${tenantId}`);
+}
+
+export async function getAuditLog(limit = 100) {
+  return apiFetch(`/api/admin/system/audit-log/?limit=${limit}`);
+}
+
+export async function bulkUpdatePlan(tenantIds: string[], plan: string) {
+  return apiFetch("/api/admin/system/bulk/update-plan/", {
+    method: "POST",
+    body: JSON.stringify({ tenant_ids: tenantIds, plan }),
+  });
+}
+
+export async function bulkRunMonitoring() {
+  return apiFetch("/api/admin/system/bulk/run-monitoring/", { method: "POST" });
+}
+
+// ─── Domain Migration ───
+
+export async function changeTenantDomain(tenantId: string, domain: string) {
+  return apiFetch(`/api/admin/tenants/${tenantId}/domain?domain=${encodeURIComponent(domain)}`, {
+    method: "PATCH",
+  });
+}
+
+export async function getEmbedConfig(tenantId: string) {
+  return apiFetch(`/api/admin/tenants/${tenantId}/embed-config`);
+}
