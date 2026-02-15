@@ -29,6 +29,7 @@ from app.services.confidence import (
 from app.services.escalation import escalate_conversation
 from app.services.llm import generate_response
 from app.services.rag import retrieve_relevant_chunks, build_context
+from app.models.monitor import MonitorCheck, Alert, CheckStatus
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -137,12 +138,39 @@ async def chat(
         for m in history_messages[-10:]
     ]
 
+    # ─── [2b] MONITORING: Gather site health context ───
+    monitoring_context = None
+    if tenant.plan in (tenant.plan.pro, tenant.plan.pro_plus):
+        try:
+            checks_result = await db.execute(
+                select(MonitorCheck).where(MonitorCheck.tenant_id == tenant_uuid)
+            )
+            checks = checks_result.scalars().all()
+            if checks:
+                lines = [f"Site: {tenant.domain or 'unknown'}"]
+                for c in checks:
+                    status_icon = "✅" if c.last_status == CheckStatus.ok else "⚠️" if c.last_status == CheckStatus.warning else "❌"
+                    lines.append(f"{status_icon} {c.check_type.value}: {c.last_status.value} (last check: {c.last_checked_at.isoformat() if c.last_checked_at else 'never'})")
+                # Check for active alerts
+                alerts_result = await db.execute(
+                    select(Alert).where(Alert.tenant_id == tenant_uuid, Alert.resolved == False)
+                )
+                active_alerts = alerts_result.scalars().all()
+                if active_alerts:
+                    lines.append(f"\n⚠️ ACTIVE ALERTS ({len(active_alerts)}):")
+                    for a in active_alerts[:5]:
+                        lines.append(f"  - [{a.severity.value}] {a.title}")
+                monitoring_context = "\n".join(lines)
+        except Exception:
+            pass  # Don't break chat if monitoring fails
+
     # ─── [3] RESPONSE: Generate with LLM ───
     llm_result = await generate_response(
         user_message=body.message,
         context=context,
         plan=tenant.plan,
         conversation_history=conversation_history,
+        monitoring_context=monitoring_context,
     )
 
     # ─── [4] CONFIDENCE: Score the response ───

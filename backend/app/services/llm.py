@@ -84,6 +84,7 @@ async def generate_response(
     context: str,
     plan: PlanType,
     conversation_history: list[dict] | None = None,
+    monitoring_context: str | None = None,
 ) -> dict:
     """Generate an AI response using the LLM.
 
@@ -94,6 +95,9 @@ async def generate_response(
 
     if context:
         system_prompt += f"\n\n--- CONTEXT (from approved sources) ---\n{context}\n--- END CONTEXT ---"
+
+    if monitoring_context:
+        system_prompt += f"\n\n--- SITE MONITORING STATUS ---\n{monitoring_context}\n--- END MONITORING ---"
 
     messages = [{"role": "system", "content": system_prompt}]
 

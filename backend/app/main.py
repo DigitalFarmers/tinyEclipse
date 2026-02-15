@@ -62,6 +62,18 @@ except Exception:
     pass  # Widget not built yet
 
 
+@app.on_event("startup")
+async def startup_event():
+    from app.services.scheduler import start_scheduler
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from app.services.scheduler import stop_scheduler
+    stop_scheduler()
+
+
 @app.get("/")
 async def root():
     return {
