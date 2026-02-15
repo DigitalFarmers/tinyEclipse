@@ -218,41 +218,112 @@ async def check_security_headers(target: str, config: dict) -> dict:
 
 
 async def check_forms(target: str, config: dict) -> dict:
-    """Detect forms on the page and check their action endpoints."""
+    """Detect forms on the site — supports FluentForms, WPForms, CF7, Gravity Forms.
+    Scans homepage + common form pages (contact, offerte, etc.) + sitemap pages."""
+    import re
+
+    pages_to_scan = config.get("pages", [])
+    common_slugs = ["contact", "contacteer-ons", "offerte", "bestellen", "aanvraag", "quote", "booking", "reserveren"]
+
     try:
-        async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+        base = target.rstrip("/")
+        async with httpx.AsyncClient(follow_redirects=True, verify=False, timeout=15) as client:
             start = time.monotonic()
-            resp = await client.get(target, timeout=15)
+
+            # Build list of pages to scan
+            scan_urls = [base]
+            for slug in common_slugs:
+                scan_urls.append(f"{base}/{slug}/")
+            for page in pages_to_scan:
+                scan_urls.append(page if page.startswith("http") else f"{base}/{page.strip('/')}/")
+
+            all_forms = []
+            pages_scanned = 0
+            form_plugins = set()
+
+            for url in scan_urls:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    pages_scanned += 1
+                    html = resp.text
+
+                    # Detect form plugins
+                    html_lower = html.lower()
+                    if "fluentform" in html_lower or "ff-el-group" in html_lower:
+                        form_plugins.add("FluentForms")
+                    if "wpforms" in html_lower:
+                        form_plugins.add("WPForms")
+                    if "wpcf7" in html_lower:
+                        form_plugins.add("ContactForm7")
+                    if "gform_wrapper" in html_lower:
+                        form_plugins.add("GravityForms")
+
+                    # Extract FluentForms form IDs
+                    ff_ids = re.findall(r'data-form[_-]id=["\'](\d+)', html, re.I)
+                    for fid in ff_ids:
+                        all_forms.append({"plugin": "FluentForms", "form_id": fid, "page": url})
+
+                    # Count standard <form> tags
+                    form_tags = re.findall(r'<form[^>]*>', html, re.I)
+                    for ft in form_tags:
+                        action = re.search(r'action=["\']([^"\']*)', ft, re.I)
+                        all_forms.append({
+                            "plugin": "html",
+                            "action": action.group(1) if action else "none",
+                            "page": url,
+                        })
+
+                    # Security checks on forms
+                    has_csrf = "csrf" in html_lower or "_token" in html_lower or "nonce" in html_lower or "_wpnonce" in html_lower
+                    has_captcha = "captcha" in html_lower or "recaptcha" in html_lower or "hcaptcha" in html_lower or "turnstile" in html_lower
+                    has_honeypot = "honeypot" in html_lower or "ff_hp" in html_lower
+
+                    if ff_ids or form_tags:
+                        for form in all_forms:
+                            if form["page"] == url:
+                                form["csrf"] = has_csrf
+                                form["captcha"] = has_captcha
+                                form["honeypot"] = has_honeypot
+
+                except Exception:
+                    continue
+
             elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        html = resp.text.lower()
-        # Simple form detection
-        form_count = html.count("<form")
-        input_count = html.count("<input")
-        has_csrf = "csrf" in html or "_token" in html
-        has_captcha = "captcha" in html or "recaptcha" in html or "hcaptcha" in html
-        has_honeypot = "honeypot" in html
+            # Deduplicate forms
+            unique_forms = []
+            seen = set()
+            for f in all_forms:
+                key = f"{f.get('plugin')}:{f.get('form_id', f.get('action', ''))}:{f['page']}"
+                if key not in seen:
+                    seen.add(key)
+                    unique_forms.append(f)
 
-        status = CheckStatus.ok
-        issues = []
-        if form_count > 0 and not has_csrf:
-            issues.append("No CSRF protection detected")
-            status = CheckStatus.warning
-        if form_count > 0 and not has_captcha:
-            issues.append("No CAPTCHA detected")
+            # Determine status
+            status = CheckStatus.ok
+            issues = []
+            forms_without_csrf = [f for f in unique_forms if not f.get("csrf", True)]
+            forms_without_captcha = [f for f in unique_forms if not f.get("captcha", True)]
 
-        return {
-            "status": status,
-            "response_ms": elapsed_ms,
-            "details": {
-                "forms_found": form_count,
-                "inputs_found": input_count,
-                "csrf_protection": has_csrf,
-                "captcha": has_captcha,
-                "honeypot": has_honeypot,
-                "issues": issues,
-            },
-        }
+            if forms_without_csrf:
+                issues.append(f"{len(forms_without_csrf)} form(s) without CSRF/nonce protection")
+                status = CheckStatus.warning
+            if forms_without_captcha:
+                issues.append(f"{len(forms_without_captcha)} form(s) without CAPTCHA")
+
+            return {
+                "status": status,
+                "response_ms": elapsed_ms,
+                "details": {
+                    "forms_found": len(unique_forms),
+                    "pages_scanned": pages_scanned,
+                    "form_plugins": list(form_plugins),
+                    "forms": unique_forms[:20],
+                    "issues": issues,
+                },
+            }
     except Exception as e:
         return {"status": CheckStatus.critical, "response_ms": None, "error": str(e), "details": {}}
 
