@@ -110,7 +110,8 @@
   function track(endpoint, data) {
     const payload = { tenant_id: TENANT_ID, session_id: sessionId, ...data };
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(`${API_BASE}/api/track/${endpoint}`, JSON.stringify(payload));
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      navigator.sendBeacon(`${API_BASE}/api/track/${endpoint}`, blob);
     } else {
       fetch(`${API_BASE}/api/track/${endpoint}`, {
         method: "POST",
