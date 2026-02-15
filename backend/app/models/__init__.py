@@ -6,6 +6,7 @@ from app.models.message import Message
 from app.models.consent import Consent
 from app.models.usage_log import UsageLog
 from app.models.monitor import MonitorCheck, MonitorResult, Alert
+from app.models.visitor import VisitorSession, PageView, VisitorEvent
 
 __all__ = [
     "Tenant",
@@ -18,4 +19,7 @@ __all__ = [
     "MonitorCheck",
     "MonitorResult",
     "Alert",
+    "VisitorSession",
+    "PageView",
+    "VisitorEvent",
 ]
