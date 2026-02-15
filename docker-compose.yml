@@ -1,16 +1,6 @@
 version: "3.9"
 
-# ============================================================
-# TinyEclipse — Docker Compose (Dokploy-compatible)
-#
-# Dokploy handles Traefik reverse proxy (auto HTTPS).
-# Port mappings included as fallback for IP-based access.
-#
-# Deploy: Dokploy → Compose → GitHub → set env vars → deploy
-# ============================================================
-
 services:
-  # ─── PostgreSQL + pgvector ───
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
@@ -26,10 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - internal
 
-  # ─── Backend API ───
   backend:
     build: ./backend
     restart: unless-stopped
@@ -43,7 +30,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-change-this}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://admin.tinyeclipse.digitalfarmers.be,https://staging.chocotale.online,https://chocotale.be}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
       RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-500}
       CONFIDENCE_ESCALATE_THRESHOLD: ${CONFIDENCE_ESCALATE_THRESHOLD:-0.6}
@@ -52,17 +39,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.te-api.rule=Host(`${API_DOMAIN:-api.tinyeclipse.digitalfarmers.be}`)"
-      - "traefik.http.routers.te-api.entrypoints=websecure"
-      - "traefik.http.routers.te-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.te-api.loadbalancer.server.port=8000"
-    networks:
-      - internal
-      - dokploy-network
 
-  # ─── Admin Panel ───
   admin:
     build: ./admin
     restart: unless-stopped
@@ -73,21 +50,6 @@ services:
       NEXT_PUBLIC_ADMIN_KEY: ${ADMIN_API_KEY:-change-this}
     ports:
       - "3001:3000"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.te-admin.rule=Host(`${ADMIN_DOMAIN:-admin.tinyeclipse.digitalfarmers.be}`)"
-      - "traefik.http.routers.te-admin.entrypoints=websecure"
-      - "traefik.http.routers.te-admin.tls.certresolver=letsencrypt"
-      - "traefik.http.services.te-admin.loadbalancer.server.port=3000"
-    networks:
-      - internal
-      - dokploy-network
 
 volumes:
   pgdata:
-
-networks:
-  internal:
-    driver: bridge
-  dokploy-network:
-    external: true
