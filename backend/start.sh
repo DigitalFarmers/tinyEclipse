@@ -1,27 +1,26 @@
 #!/bin/sh
 
 echo "=== TinyEclipse Backend Starting ==="
-echo "DATABASE_URL: ${DATABASE_URL:0:30}..."
 
 echo "Waiting for database..."
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  python3 -c "
-import sys
-try:
-    import asyncio, asyncpg
-    async def check():
-        url = '${DATABASE_URL}'.replace('+asyncpg','')
-        conn = await asyncpg.connect(url)
-        await conn.close()
-        print('DB connected!')
-    asyncio.run(check())
-except Exception as e:
-    print(f'DB not ready: {e}')
+python3 -c "
+import sys, asyncio, time, os
+async def wait_for_db():
+    import asyncpg
+    url = os.environ.get('DATABASE_URL','').replace('+asyncpg','')
+    for i in range(10):
+        try:
+            conn = await asyncpg.connect(url)
+            await conn.close()
+            print('DB connected!')
+            return
+        except Exception as e:
+            print(f'DB not ready ({i+1}/10): {e}')
+            time.sleep(3)
+    print('ERROR: Could not connect to DB after 10 retries')
     sys.exit(1)
-" && break
-  echo "Retry $i/10..."
-  sleep 3
-done
+asyncio.run(wait_for_db())
+"
 
 echo "Running database migrations..."
 alembic upgrade head || echo "WARNING: Alembic migration failed (may already be applied)"
