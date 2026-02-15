@@ -1,3 +1,5 @@
+import logging
+
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +13,8 @@ from app.routers import chat, consent, tenants, sources, admin
 
 settings = get_settings()
 
+_LOG_LEVELS = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL}
+
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
@@ -19,7 +23,7 @@ structlog.configure(
         structlog.dev.ConsoleRenderer() if settings.log_level == "DEBUG" else structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(
-        structlog.get_level_from_name(settings.log_level)
+        _LOG_LEVELS.get(settings.log_level.upper(), logging.INFO)
     ),
 )
 
