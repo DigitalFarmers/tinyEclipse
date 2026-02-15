@@ -3,12 +3,10 @@ version: "3.9"
 # ============================================================
 # TinyEclipse — Docker Compose (Dokploy-compatible)
 #
-# Dokploy handles:
-#   - Traefik reverse proxy (automatic HTTPS via Let's Encrypt)
-#   - Domain routing via labels
-#   - Container orchestration
+# Dokploy handles Traefik reverse proxy (auto HTTPS).
+# Port mappings included as fallback for IP-based access.
 #
-# Deploy via Dokploy: Compose → paste this → set env vars → deploy
+# Deploy: Dokploy → Compose → GitHub → set env vars → deploy
 # ============================================================
 
 services:
@@ -45,12 +43,15 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-change-this}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://admin.tinyeclipse.nl,https://tinyeclipse.nl}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
       RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-500}
       CONFIDENCE_ESCALATE_THRESHOLD: ${CONFIDENCE_ESCALATE_THRESHOLD:-0.6}
       CONFIDENCE_REFUSE_THRESHOLD: ${CONFIDENCE_REFUSE_THRESHOLD:-0.3}
+      WIDGET_BASE_URL: ${WIDGET_BASE_URL:-http://51.89.23.93:8000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.te-api.rule=Host(`${API_DOMAIN:-api.tinyeclipse.nl}`)"
@@ -68,8 +69,10 @@ services:
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.tinyeclipse.nl}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://51.89.23.93:8000}
       NEXT_PUBLIC_ADMIN_KEY: ${ADMIN_API_KEY:-change-this}
+    ports:
+      - "3001:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.te-admin.rule=Host(`${ADMIN_DOMAIN:-admin.tinyeclipse.nl}`)"
