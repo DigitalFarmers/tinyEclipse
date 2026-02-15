@@ -58,7 +58,7 @@ app.include_router(tracking.router)
 
 # Serve widget static files
 try:
-    app.mount("/widget/v1", StaticFiles(directory="../widget/dist"), name="widget")
+    app.mount("/widget/v1", StaticFiles(directory="static/widget/v1"), name="widget")
 except Exception:
     pass  # Widget not built yet
 
