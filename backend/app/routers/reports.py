@@ -154,17 +154,29 @@ async def site_health_report(
                     "response_ms": r.response_ms,
                 })
 
-    # SSL details
+    # SSL details — fetch from latest result
     ssl_checks = [c for c in checks if c.check_type == CheckType.ssl]
     ssl_info = None
-    if ssl_checks and ssl_checks[0].last_result_details:
-        ssl_info = ssl_checks[0].last_result_details
+    if ssl_checks:
+        ssl_result = await db.execute(
+            select(MonitorResult).where(MonitorResult.check_id == ssl_checks[0].id)
+            .order_by(MonitorResult.created_at.desc()).limit(1)
+        )
+        ssl_r = ssl_result.scalar_one_or_none()
+        if ssl_r:
+            ssl_info = ssl_r.details
 
-    # Security headers details
+    # Security headers details — fetch from latest result
     sec_checks = [c for c in checks if c.check_type == CheckType.security_headers]
     security_info = None
-    if sec_checks and sec_checks[0].last_result_details:
-        security_info = sec_checks[0].last_result_details
+    if sec_checks:
+        sec_result = await db.execute(
+            select(MonitorResult).where(MonitorResult.check_id == sec_checks[0].id)
+            .order_by(MonitorResult.created_at.desc()).limit(1)
+        )
+        sec_r = sec_result.scalar_one_or_none()
+        if sec_r:
+            security_info = sec_r.details
 
     # Build recommendations
     recommendations = []
@@ -235,7 +247,7 @@ def _get_recommendation(check: MonitorCheck) -> str:
 @router.get("/periodic/{tenant_id}")
 async def periodic_report(
     tenant_id: str,
-    period: str = Query("week", regex="^(week|month)$"),
+    period: str = Query("week", pattern="^(week|month)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """Weekly or monthly report — monitoring + analytics + AI usage combined."""

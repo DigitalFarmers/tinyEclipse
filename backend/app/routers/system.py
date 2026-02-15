@@ -76,9 +76,17 @@ async def platform_health(db: AsyncSession = Depends(get_db)):
         pass
 
     # System info
-    import psutil
-    process = psutil.Process(os.getpid())
-    mem = process.memory_info()
+    memory_info = {"rss_mb": None, "vms_mb": None}
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        mem = process.memory_info()
+        memory_info = {
+            "rss_mb": round(mem.rss / 1024 / 1024, 1),
+            "vms_mb": round(mem.vms / 1024 / 1024, 1),
+        }
+    except ImportError:
+        pass
 
     return {
         "status": "healthy" if db_healthy else "degraded",
@@ -88,10 +96,7 @@ async def platform_health(db: AsyncSession = Depends(get_db)):
             "platform": platform.platform(),
             "python_version": platform.python_version(),
         },
-        "memory": {
-            "rss_mb": round(mem.rss / 1024 / 1024, 1),
-            "vms_mb": round(mem.vms / 1024 / 1024, 1),
-        },
+        "memory": memory_info,
         "database": {
             "healthy": db_healthy,
             "table_counts": db_stats,
