@@ -37,8 +37,9 @@ services:
       CONFIDENCE_REFUSE_THRESHOLD: ${CONFIDENCE_REFUSE_THRESHOLD:-0.3}
       WIDGET_BASE_URL: ${WIDGET_BASE_URL:-http://51.89.23.93:8000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    ports:
-      - "8000:8000"
+    networks:
+      - dokploy-network
+      - default
 
   admin:
     build: ./admin
@@ -46,10 +47,15 @@ services:
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://51.89.23.93:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api.tinyeclipse.digitalfarmers.be}
       NEXT_PUBLIC_ADMIN_KEY: ${ADMIN_API_KEY:-change-this}
-    ports:
-      - "3001:3000"
+    networks:
+      - dokploy-network
+      - default
 
 volumes:
   pgdata:
+
+networks:
+  dokploy-network:
+    external: true
