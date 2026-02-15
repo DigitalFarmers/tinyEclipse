@@ -43,7 +43,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-change-this}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://admin.tinyeclipse.digitalfarmers.be,https://staging.chocotale.online,https://chocotale.be}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
       RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY:-500}
       CONFIDENCE_ESCALATE_THRESHOLD: ${CONFIDENCE_ESCALATE_THRESHOLD:-0.6}
@@ -54,7 +54,7 @@ services:
       - "8000:8000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.te-api.rule=Host(`${API_DOMAIN:-api.tinyeclipse.nl}`)"
+      - "traefik.http.routers.te-api.rule=Host(`${API_DOMAIN:-api.tinyeclipse.digitalfarmers.be}`)"
       - "traefik.http.routers.te-api.entrypoints=websecure"
       - "traefik.http.routers.te-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.te-api.loadbalancer.server.port=8000"
@@ -75,7 +75,7 @@ services:
       - "3001:3000"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.te-admin.rule=Host(`${ADMIN_DOMAIN:-admin.tinyeclipse.nl}`)"
+      - "traefik.http.routers.te-admin.rule=Host(`${ADMIN_DOMAIN:-admin.tinyeclipse.digitalfarmers.be}`)"
       - "traefik.http.routers.te-admin.entrypoints=websecure"
       - "traefik.http.routers.te-admin.tls.certresolver=letsencrypt"
       - "traefik.http.services.te-admin.loadbalancer.server.port=3000"
