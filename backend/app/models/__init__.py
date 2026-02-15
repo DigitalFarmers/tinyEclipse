@@ -5,6 +5,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.consent import Consent
 from app.models.usage_log import UsageLog
+from app.models.monitor import MonitorCheck, MonitorResult, Alert
 
 __all__ = [
     "Tenant",
@@ -14,4 +15,7 @@ __all__ = [
     "Message",
     "Consent",
     "UsageLog",
+    "MonitorCheck",
+    "MonitorResult",
+    "Alert",
 ]

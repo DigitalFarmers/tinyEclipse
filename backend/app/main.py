@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.middleware.rate_limit import limiter
-from app.routers import chat, consent, tenants, sources, admin
+from app.routers import chat, consent, tenants, sources, admin, monitoring
 
 settings = get_settings()
 
@@ -53,6 +53,7 @@ app.include_router(consent.router)
 app.include_router(tenants.router)
 app.include_router(sources.router)
 app.include_router(admin.router)
+app.include_router(monitoring.router)
 
 # Serve widget static files
 try:
