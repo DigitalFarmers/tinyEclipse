@@ -31,6 +31,7 @@ app = FastAPI(
     title="TinyEclipse API",
     description="AI Operating Layer — tenant-isolated, confidence-scored, human-first",
     version="0.1.0",
+    redirect_slashes=False,
 )
 
 # Rate limiting

@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 
-@router.get("/overview")
+@router.get("/overview/")
 async def overview(db: AsyncSession = Depends(get_db)):
     """Admin overview — situational awareness."""
     now = datetime.now(timezone.utc)
@@ -86,7 +86,7 @@ async def overview(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get("/conversations")
+@router.get("/conversations/")
 async def list_conversations(
     tenant_id: str | None = None,
     status: str | None = None,
@@ -223,7 +223,7 @@ async def get_embed_config(
     }
 
 
-@router.get("/usage")
+@router.get("/usage/")
 async def usage_overview(
     tenant_id: str | None = None,
     db: AsyncSession = Depends(get_db),

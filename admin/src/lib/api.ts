@@ -21,11 +21,11 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 export async function getOverview() {
-  return apiFetch("/api/admin/overview");
+  return apiFetch("/api/admin/overview/");
 }
 
 export async function getTenants() {
-  return apiFetch("/api/admin/tenants");
+  return apiFetch("/api/admin/tenants/");
 }
 
 export async function getTenant(id: string) {
@@ -39,7 +39,7 @@ export async function createTenant(data: {
   domain?: string;
   auto_scrape?: boolean;
 }) {
-  return apiFetch("/api/admin/tenants", {
+  return apiFetch("/api/admin/tenants/", {
     method: "POST",
     body: JSON.stringify({ auto_scrape: true, ...data }),
   });
@@ -59,7 +59,7 @@ export async function getConversations(tenantId?: string, status?: string) {
   const params = new URLSearchParams();
   if (tenantId) params.set("tenant_id", tenantId);
   if (status) params.set("status", status);
-  return apiFetch(`/api/admin/conversations?${params}`);
+  return apiFetch(`/api/admin/conversations/?${params}`);
 }
 
 export async function getConversation(id: string) {
@@ -77,7 +77,7 @@ export async function createSource(data: {
   title: string;
   content?: string;
 }) {
-  return apiFetch("/api/admin/sources", {
+  return apiFetch("/api/admin/sources/", {
     method: "POST",
     body: JSON.stringify(data),
   });
