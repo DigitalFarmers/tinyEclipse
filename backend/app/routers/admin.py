@@ -159,6 +159,70 @@ async def get_conversation(
     }
 
 
+@router.patch("/tenants/{tenant_id}/domain")
+async def change_tenant_domain(
+    tenant_id: str,
+    domain: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Change a tenant's domain — for site migrations/verhuizingen.
+    All monitoring checks, analytics, and AI data are preserved.
+    Only the domain reference and monitoring targets are updated.
+    """
+    from app.models.monitor import MonitorCheck
+
+    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    if not tenant:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    old_domain = tenant.domain
+    tenant.domain = domain
+
+    # Update all monitoring check targets to new domain
+    checks_result = await db.execute(
+        select(MonitorCheck).where(MonitorCheck.tenant_id == tenant.id)
+    )
+    checks = checks_result.scalars().all()
+    updated_checks = 0
+    for check in checks:
+        if old_domain and old_domain in (check.target or ""):
+            check.target = check.target.replace(old_domain, domain)
+            updated_checks += 1
+
+    await db.flush()
+
+    return {
+        "status": "domain_updated",
+        "old_domain": old_domain,
+        "new_domain": domain,
+        "monitoring_checks_updated": updated_checks,
+        "message": f"Tenant migrated from {old_domain} to {domain}. All data preserved.",
+    }
+
+
+@router.get("/tenants/{tenant_id}/embed-config")
+async def get_embed_config(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the embed configuration for a tenant — used by plugins and integrations."""
+    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    if not tenant:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return {
+        "tenant_id": str(tenant.id),
+        "name": tenant.name,
+        "domain": tenant.domain,
+        "plan": tenant.plan.value if hasattr(tenant.plan, 'value') else tenant.plan,
+        "api_base": "https://api.tinyeclipse.digitalfarmers.be",
+        "widget_url": "https://api.tinyeclipse.digitalfarmers.be/widget/v1/widget.js",
+        "embed_code": f'<script src="https://api.tinyeclipse.digitalfarmers.be/widget/v1/widget.js" data-tenant="{tenant.id}" data-api="https://api.tinyeclipse.digitalfarmers.be" async></script>',
+    }
+
+
 @router.get("/usage")
 async def usage_overview(
     tenant_id: str | None = None,

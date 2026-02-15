@@ -98,3 +98,51 @@ export async function getUsage(tenantId?: string) {
   const params = tenantId ? `?tenant_id=${tenantId}` : "";
   return apiFetch(`/api/admin/usage${params}`);
 }
+
+// ─── Monitoring ───
+
+export async function getMonitoringDashboard(tenantId: string) {
+  return apiFetch(`/api/admin/monitoring/dashboard/${tenantId}`);
+}
+
+export async function getMonitoringChecks(tenantId: string) {
+  return apiFetch(`/api/admin/monitoring/checks/${tenantId}`);
+}
+
+export async function runMonitoringChecks(tenantId: string) {
+  return apiFetch(`/api/admin/monitoring/run/${tenantId}`, { method: "POST" });
+}
+
+export async function runSingleCheck(checkId: string) {
+  return apiFetch(`/api/admin/monitoring/run-check/${checkId}`, { method: "POST" });
+}
+
+export async function getCheckResults(checkId: string, limit = 50) {
+  return apiFetch(`/api/admin/monitoring/results/${checkId}?limit=${limit}`);
+}
+
+export async function getAlerts(tenantId: string, resolved = false) {
+  return apiFetch(`/api/admin/monitoring/alerts/${tenantId}?resolved=${resolved}`);
+}
+
+export async function acknowledgeAlert(alertId: string) {
+  return apiFetch(`/api/admin/monitoring/alerts/${alertId}/acknowledge`, { method: "POST" });
+}
+
+export async function resolveAlert(alertId: string) {
+  return apiFetch(`/api/admin/monitoring/alerts/${alertId}/resolve`, { method: "POST" });
+}
+
+export async function setupMonitoring(tenantId: string) {
+  return apiFetch(`/api/admin/monitoring/setup/${tenantId}`, { method: "POST" });
+}
+
+// ─── Analytics ───
+
+export async function getAnalytics(tenantId: string, hours = 24) {
+  return apiFetch(`/api/track/analytics/${tenantId}?hours=${hours}`);
+}
+
+export async function getVisitorJourney(sessionId: string) {
+  return apiFetch(`/api/track/journey/${sessionId}`);
+}
