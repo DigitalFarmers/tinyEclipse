@@ -299,3 +299,53 @@ export async function changeTenantDomain(tenantId: string, domain: string) {
 export async function getEmbedConfig(tenantId: string) {
   return apiFetch(`/api/admin/tenants/${tenantId}/embed-config`);
 }
+
+// ─── WHMCS ───
+
+export async function getWhmcsStatus() {
+  return apiFetch("/api/admin/whmcs/status/");
+}
+
+export async function getWhmcsClients(limit = 100) {
+  return apiFetch(`/api/admin/whmcs/clients/?limit=${limit}`);
+}
+
+export async function getWhmcsClient(clientId: number) {
+  return apiFetch(`/api/admin/whmcs/clients/${clientId}`);
+}
+
+export async function getWhmcsClientProducts(clientId: number) {
+  return apiFetch(`/api/admin/whmcs/clients/${clientId}/products`);
+}
+
+export async function getWhmcsClientDomains(clientId: number) {
+  return apiFetch(`/api/admin/whmcs/clients/${clientId}/domains`);
+}
+
+export async function getWhmcsClientInvoices(clientId: number, status = "Unpaid") {
+  return apiFetch(`/api/admin/whmcs/clients/${clientId}/invoices?status=${status}`);
+}
+
+export async function getWhmcsProducts() {
+  return apiFetch("/api/admin/whmcs/products/");
+}
+
+export async function getWhmcsOrders(limit = 50) {
+  return apiFetch(`/api/admin/whmcs/orders/?limit=${limit}`);
+}
+
+export async function getWhmcsTickets(status = "Open") {
+  return apiFetch(`/api/admin/whmcs/tickets/?status=${status}`);
+}
+
+export async function syncWhmcsClients() {
+  return apiFetch("/api/admin/whmcs/sync/clients/", { method: "POST" });
+}
+
+export async function pushTenantIdsToWhmcs() {
+  return apiFetch("/api/admin/whmcs/sync/push-tenant-ids/", { method: "POST" });
+}
+
+export async function getWhmcsPortalData(clientId: number) {
+  return apiFetch(`/api/admin/whmcs/portal/${clientId}`);
+}

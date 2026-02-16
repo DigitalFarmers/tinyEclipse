@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     confidence_escalate_threshold: float = 0.6
     confidence_refuse_threshold: float = 0.3
 
+    # WHMCS Integration
+    whmcs_api_url: str = ""  # e.g. https://whmcs.digitalfarmers.be/includes/api.php
+    whmcs_api_identifier: str = ""
+    whmcs_api_secret: str = ""
+    whmcs_admin_user: str = ""  # Admin username for API calls
+    whmcs_product_tiny: int = 0  # WHMCS Product ID for Tiny plan
+    whmcs_product_pro: int = 0  # WHMCS Product ID for Pro plan
+    whmcs_product_pro_plus: int = 0  # WHMCS Product ID for Pro+ plan
+
     # Widget
     widget_base_url: str = "http://localhost:8000"
 

@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.middleware.rate_limit import limiter
-from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system
+from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs
 from app.routers.heartbeat import public_router as heartbeat_public, admin_router as heartbeat_admin
 from app.routers.sites import public_router as sites_public, admin_router as sites_admin
 
@@ -65,6 +65,7 @@ app.include_router(heartbeat_public)
 app.include_router(heartbeat_admin)
 app.include_router(sites_public)
 app.include_router(sites_admin)
+app.include_router(whmcs.router)
 
 # Serve widget static files
 try:
