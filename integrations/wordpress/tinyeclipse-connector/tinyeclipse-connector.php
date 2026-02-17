@@ -244,9 +244,8 @@ function tinyeclipse_settings_page() {
 function tinyeclipse_check_connection($tenant_id) {
     if (empty($tenant_id)) return 'no_id';
 
-    $response = wp_remote_get(TINYECLIPSE_API_BASE . '/api/admin/tenants/' . $tenant_id, [
-        'timeout' => 5,
-        'headers' => ['X-Admin-Key' => ''],
+    $response = wp_remote_get(TINYECLIPSE_API_BASE . '/api/sites/verify/' . $tenant_id, [
+        'timeout' => 10,
     ]);
 
     if (is_wp_error($response)) return 'error';
