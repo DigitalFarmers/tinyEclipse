@@ -349,9 +349,17 @@ async def update_tenant(
         tenant.status = TenantStatus(body.status)
     if body.domain is not None:
         tenant.domain = body.domain
+    if body.environment is not None:
+        tenant.environment = TenantEnvironment(body.environment)
     if body.settings is not None:
         tenant.settings = body.settings
 
     await db.flush()
 
-    return {"status": "updated", "id": str(tenant.id)}
+    return {
+        "status": "updated",
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "domain": tenant.domain,
+        "environment": tenant.environment.value if hasattr(tenant, 'environment') and tenant.environment else "production",
+    }
