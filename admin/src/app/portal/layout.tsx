@@ -67,6 +67,7 @@ function PortalSidebar() {
 
   const items = [
     { href: "/portal", label: "Overzicht", icon: LayoutDashboard },
+    { href: "/portal/events", label: "Activiteit", icon: Activity },
     { href: "/portal/ai", label: "AI Assistent", icon: Bot },
     { href: "/portal/monitoring", label: "Monitoring", icon: Shield },
     { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3 },

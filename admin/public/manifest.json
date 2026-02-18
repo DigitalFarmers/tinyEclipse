@@ -1,0 +1,27 @@
+{
+  "name": "TinyEclipse - Mijn Website",
+  "short_name": "TinyEclipse",
+  "description": "AI Chat, Monitoring & Analytics voor je website — by Digital Farmers",
+  "start_url": "/portal",
+  "display": "standalone",
+  "background_color": "#0a0a1a",
+  "theme_color": "#6C3CE1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "nl",
+  "dir": "ltr"
+}

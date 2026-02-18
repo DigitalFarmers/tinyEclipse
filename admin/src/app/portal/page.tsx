@@ -28,6 +28,37 @@ function usePortalSession(): PortalSession | null {
   const router = useRouter();
 
   useEffect(() => {
+    // Check for SSO auto-login from WHMCS: ?sso=tenant_id:timestamp:signature
+    const params = new URLSearchParams(window.location.search);
+    const sso = params.get("sso");
+    if (sso) {
+      const parts = sso.split(":");
+      if (parts.length >= 3) {
+        const tenantId = parts[0];
+        const token = parts.slice(1).join(":");
+        fetch(`${API_URL}/api/portal/verify?tenant_id=${tenantId}&token=${encodeURIComponent(token)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((data) => {
+            if (data?.verified) {
+              const sess = {
+                tenant_id: data.tenant_id,
+                tenant_name: data.tenant_name,
+                domain: data.domain,
+                plan: data.plan,
+              };
+              sessionStorage.setItem("te_portal_session", JSON.stringify(sess));
+              setSession(sess);
+              // Clean URL
+              window.history.replaceState({}, "", "/portal");
+            } else {
+              router.replace("/portal/login");
+            }
+          })
+          .catch(() => router.replace("/portal/login"));
+        return;
+      }
+    }
+
     const raw = sessionStorage.getItem("te_portal_session");
     if (!raw) {
       router.replace("/portal/login");
