@@ -14,20 +14,24 @@ import {
   Activity,
   Lock,
   Crown,
+  Puzzle,
 } from "lucide-react";
 import type { PlanFeatures } from "@/lib/usePortalSession";
+import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [features, setFeatures] = useState<PlanFeatures | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("te_portal_session");
     if (!raw) return;
     try {
       const s = JSON.parse(raw);
+      setTenantId(s.tenant_id);
       fetch(`${API_URL}/api/portal/features/${s.tenant_id}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => { if (d) setFeatures(d); })
@@ -44,14 +48,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     <div className="flex min-h-screen">
       <PortalSidebar features={features} />
       <main className="flex-1 overflow-auto">
-        <PortalTopBar features={features} />
+        <PortalTopBar features={features} tenantId={tenantId} />
         <div className="p-6 lg:p-8">{children}</div>
       </main>
     </div>
   );
 }
 
-function PortalTopBar({ features }: { features: PlanFeatures | null }) {
+function PortalTopBar({ features, tenantId }: { features: PlanFeatures | null; tenantId: string | null }) {
   function handleLogout() {
     sessionStorage.removeItem("te_portal_session");
     window.location.href = "/portal/login";
@@ -65,7 +69,8 @@ function PortalTopBar({ features }: { features: PlanFeatures | null }) {
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/5 bg-brand-950/80 px-6 backdrop-blur-xl lg:px-8">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        {tenantId && <ProjectSwitcher currentTenantId={tenantId} />}
         {features && (
           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${planColors[features.plan] || planColors.tiny}`}>
             {features.plan === "pro_plus" && <Crown className="h-2.5 w-2.5" />}
@@ -102,6 +107,7 @@ function PortalSidebar({ features }: { features: PlanFeatures | null }) {
     { href: "/portal/events", label: "Activiteit", icon: Activity, locked: false },
     { href: "/portal/ai", label: "AI Assistent", icon: Bot, locked: false },
     { href: "/portal/monitoring", label: "Monitoring", icon: Shield, locked: false },
+    { href: "/portal/modules", label: "Modules", icon: Puzzle, locked: false },
     { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3, locked: features ? !features.features.analytics_basic : false },
     { href: "/portal/conversations", label: "Gesprekken", icon: MessageSquare, locked: false },
   ];

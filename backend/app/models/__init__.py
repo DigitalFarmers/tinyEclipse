@@ -1,4 +1,6 @@
+from app.models.client_account import ClientAccount
 from app.models.tenant import Tenant
+from app.models.site_module import SiteModule
 from app.models.source import Source
 from app.models.embedding import Embedding
 from app.models.conversation import Conversation
@@ -9,7 +11,9 @@ from app.models.monitor import MonitorCheck, MonitorResult, Alert
 from app.models.visitor import VisitorSession, PageView, VisitorEvent
 
 __all__ = [
+    "ClientAccount",
     "Tenant",
+    "SiteModule",
     "Source",
     "Embedding",
     "Conversation",

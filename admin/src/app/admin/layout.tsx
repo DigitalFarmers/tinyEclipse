@@ -14,6 +14,7 @@ import {
   Bell,
   Zap,
   LogOut,
+  Eye,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 
@@ -93,6 +94,7 @@ function Sidebar() {
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
         { href: "/admin/tenants", label: "Websites", icon: Building2 },
         { href: "/admin/monitoring", label: "Monitoring", icon: Shield },
+        { href: "/admin/superview", label: "Superview", icon: Eye },
       ],
     },
     {
