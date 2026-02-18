@@ -63,12 +63,12 @@ def should_refuse(confidence: float) -> bool:
 
 
 ESCALATION_MESSAGE = (
-    "I don't have enough confidence to answer this question accurately. "
-    "I'm forwarding this to a human team member who can help you better. "
-    "They will get back to you as soon as possible."
+    "Ik wil je graag het beste antwoord geven, maar ik ben hier niet 100% zeker van. "
+    "Ik geef dit door aan een medewerker die je verder kan helpen. "
+    "Je hoort zo snel mogelijk van ons!"
 )
 
 REFUSE_MESSAGE = (
-    "I'm unable to answer this question based on the information available to me. "
-    "Please contact our support team directly for assistance."
+    "Dat is een goede vraag! Helaas heb ik daar op dit moment niet het juiste antwoord op. "
+    "Neem gerust contact op met ons team — zij helpen je graag verder. 😊"
 )

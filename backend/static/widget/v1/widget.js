@@ -695,7 +695,7 @@
             <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
           </button>
         </div>
-        <div class="te-footer" style="display:none;"><a href="https://tinyeclipse.digitalfarmers.be" target="_blank">${t.poweredBy}</a></div>
+        <div class="te-footer" style="display:none;"><a href="https://tinyeclipse.digitalfarmers.be/about" target="_blank">${t.poweredBy}</a></div>
       </div>
       <button id="te-toggle-btn" aria-label="Open chat">
         <div class="te-pulse"></div>
@@ -796,12 +796,7 @@
     div.className = `te-msg te-msg-${role}${escalated ? " te-msg-escalated" : ""}`;
     div.textContent = content;
 
-    if (role === "assistant" && confidence !== undefined && confidence < 0.9) {
-      const conf = document.createElement("div");
-      conf.style.cssText = "font-size:10px;color:#94a3b8;margin-top:4px;";
-      conf.textContent = `Confidence: ${Math.round(confidence * 100)}%`;
-      div.appendChild(conf);
-    }
+    // Confidence is tracked internally but never shown to end users
 
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;

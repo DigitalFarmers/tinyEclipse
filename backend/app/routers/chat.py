@@ -171,6 +171,8 @@ async def chat(
         plan=tenant.plan,
         conversation_history=conversation_history,
         monitoring_context=monitoring_context,
+        tenant_name=tenant.name or "het bedrijf",
+        lang=getattr(tenant, "lang", "nl") or "nl",
     )
 
     # ─── [4] CONFIDENCE: Score the response ───

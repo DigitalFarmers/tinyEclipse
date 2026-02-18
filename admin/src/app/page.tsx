@@ -1,336 +1,405 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Globe,
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
-  Users,
-  MessageSquare,
-  Activity,
-  ArrowUpRight,
-  RefreshCw,
   Zap,
+  MessageSquare,
+  Shield,
+  BarChart3,
+  Globe,
+  ArrowRight,
+  CheckCircle,
+  Users,
   TrendingUp,
-  Eye,
+  Clock,
+  Sparkles,
+  ChevronRight,
 } from "lucide-react";
-import { getTenants, getMonitoringDashboard, getAnalytics, getOverview } from "@/lib/api";
 
-interface Tenant {
-  id: string;
-  name: string;
-  domain: string;
-  plan: string;
-  status: string;
-}
-
-interface MonitorData {
-  overall_status: string;
-  stats: { total_checks: number; ok: number; warning: number; critical: number };
-  checks: any[];
-  recent_alerts: any[];
-}
-
-interface AnalyticsData {
-  summary: {
-    total_sessions: number;
-    total_pageviews: number;
-    bounce_rate: number;
-    conversion_rate: number;
-    chat_engagement_rate: number;
-    avg_duration_seconds: number;
-    avg_pages_per_session: number;
-  };
-}
-
-export default function DashboardPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [monitorMap, setMonitorMap] = useState<Record<string, MonitorData>>({});
-  const [analyticsMap, setAnalyticsMap] = useState<Record<string, AnalyticsData>>({});
-  const [overview, setOverview] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  async function loadData() {
-    setLoading(true);
-    try {
-      const [tenantList, overviewData] = await Promise.all([
-        getTenants().catch(() => []),
-        getOverview().catch(() => null),
-      ]);
-      setTenants(tenantList);
-      setOverview(overviewData);
-
-      // Load monitoring + analytics for each tenant
-      const monMap: Record<string, MonitorData> = {};
-      const anaMap: Record<string, AnalyticsData> = {};
-      await Promise.all(
-        tenantList.map(async (t: Tenant) => {
-          try { monMap[t.id] = await getMonitoringDashboard(t.id); } catch {}
-          try { anaMap[t.id] = await getAnalytics(t.id, 24); } catch {}
-        })
-      );
-      setMonitorMap(monMap);
-      setAnalyticsMap(anaMap);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { loadData(); }, []);
-
-  const totalChecks = Object.values(monitorMap).reduce((a, m) => a + m.stats.total_checks, 0);
-  const totalOk = Object.values(monitorMap).reduce((a, m) => a + m.stats.ok, 0);
-  const totalWarning = Object.values(monitorMap).reduce((a, m) => a + m.stats.warning, 0);
-  const totalCritical = Object.values(monitorMap).reduce((a, m) => a + m.stats.critical, 0);
-  const totalVisitors = Object.values(analyticsMap).reduce((a, an) => a + (an?.summary?.total_sessions || 0), 0);
-  const totalPageviews = Object.values(analyticsMap).reduce((a, an) => a + (an?.summary?.total_pageviews || 0), 0);
-
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8">
-        <h2 className="text-lg font-semibold text-red-400">Connection Error</h2>
-        <p className="mt-2 text-sm text-red-300/70">{error}</p>
-        <p className="mt-1 text-xs text-white/30">Check API connection at {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}</p>
-      </div>
-    );
-  }
-
+export default function LandingPage() {
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="mt-0.5 text-sm text-white/40">Alle Digital Farmers websites op één plek</p>
+    <div className="relative overflow-hidden">
+      {/* Nav */}
+      <nav className="fixed top-0 z-50 w-full border-b border-white/5 bg-brand-950/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-purple-600">
+              <Zap className="h-4.5 w-4.5 text-white" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">
+              Tiny<span className="text-brand-500">Eclipse</span>
+            </span>
+          </div>
+          <div className="hidden items-center gap-8 md:flex">
+            <a href="#features" className="text-sm text-white/50 transition hover:text-white">Features</a>
+            <a href="#plans" className="text-sm text-white/50 transition hover:text-white">Pakketten</a>
+            <a href="#about" className="text-sm text-white/50 transition hover:text-white">Over ons</a>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/admin" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white">
+              Login
+            </Link>
+            <a href="#contact" className="rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 px-5 py-2.5 text-sm font-medium transition hover:opacity-90">
+              Start nu
+            </a>
+          </div>
         </div>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
+      </nav>
 
-      {loading && !tenants.length ? (
-        <div className="mt-12 flex items-center justify-center gap-3 text-white/40">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-          <span className="text-sm">Loading Eclipse HUB...</span>
+      {/* Hero */}
+      <section className="relative flex min-h-screen items-center justify-center px-6 pt-16">
+        {/* Background effects */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/3 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-500/10 blur-[120px]" />
+          <div className="absolute right-1/4 top-1/2 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[100px]" />
         </div>
-      ) : (
-        <>
-          {/* Global Stats */}
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard icon={Globe} label="Websites" value={tenants.length} color="brand" />
-            <StatCard
-              icon={totalCritical > 0 ? ShieldAlert : ShieldCheck}
-              label="Monitoring"
-              value={`${totalOk}/${totalChecks}`}
-              sub={totalCritical > 0 ? `${totalCritical} critical` : "All healthy"}
-              color={totalCritical > 0 ? "red" : totalWarning > 0 ? "yellow" : "green"}
-            />
-            <StatCard icon={Eye} label="Bezoekers (24h)" value={totalVisitors} color="purple" />
-            <StatCard icon={TrendingUp} label="Pageviews (24h)" value={totalPageviews} color="blue" />
-            <StatCard
+
+        <div className="relative mx-auto max-w-4xl text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/10 px-4 py-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-brand-400" />
+            <span className="text-xs font-medium text-brand-300">Powered by AI &mdash; Built by Digital Farmers</span>
+          </div>
+
+          <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+            Jouw website verdient een{" "}
+            <span className="bg-gradient-to-r from-brand-400 via-purple-400 to-brand-400 bg-clip-text text-transparent">
+              slimme assistent
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-white/50 sm:text-xl">
+            TinyEclipse plaatst een AI-chatassistent op jouw website die je bezoekers 24/7 helpt, 
+            vragen beantwoordt en leads omzet in klanten. Volledig op maat, volledig geautomatiseerd.
+          </p>
+
+          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+            <a
+              href="#contact"
+              className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 px-8 py-4 text-base font-semibold transition hover:opacity-90"
+            >
+              Gratis demo aanvragen
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </a>
+            <a
+              href="#features"
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 py-4 text-base font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+            >
+              Ontdek de features
+            </a>
+          </div>
+
+          {/* Social proof */}
+          <div className="mt-16 flex flex-wrap items-center justify-center gap-8 text-white/20">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              <span className="text-xs font-medium">Actief op 50+ websites</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="text-xs font-medium">10.000+ gesprekken/maand</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              <span className="text-xs font-medium">99.9% uptime</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="relative px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              Alles wat je nodig hebt,{" "}
+              <span className="text-brand-400">in &eacute;&eacute;n platform</span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-white/40">
+              Van slimme chatbot tot 24/7 monitoring &mdash; TinyEclipse is de complete AI-laag voor jouw online business.
+            </p>
+          </div>
+
+          <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <FeatureCard
               icon={MessageSquare}
-              label="Gesprekken"
-              value={overview?.today?.conversations || 0}
-              sub={overview?.today?.escalations ? `${overview.today.escalations} escalated` : undefined}
-              color={overview?.today?.escalations > 0 ? "red" : "brand"}
+              title="AI Chat Assistent"
+              description="Een slimme chatbot die jouw bezoekers helpt met vragen over producten, diensten en meer. Getraind op jouw content."
+              color="brand"
+            />
+            <FeatureCard
+              icon={Shield}
+              title="24/7 Monitoring"
+              description="Uptime, SSL, performance en DNS checks. Wij houden je site in de gaten zodat jij kunt slapen."
+              color="green"
+            />
+            <FeatureCard
+              icon={BarChart3}
+              title="Visitor Analytics"
+              description="Begrijp je bezoekers. Zie welke pagina's populair zijn, waar ze vandaan komen en hoe ze converteren."
+              color="purple"
+            />
+            <FeatureCard
+              icon={Users}
+              title="Lead Tracking"
+              description="Volg het complete traject van elke bezoeker. Van eerste klik tot conversie, alles in je dashboard."
+              color="blue"
+            />
+            <FeatureCard
+              icon={TrendingUp}
+              title="Conversie Optimalisatie"
+              description="Proactieve berichten op het juiste moment. Verhoog je conversieratio met slimme triggers."
+              color="yellow"
+            />
+            <FeatureCard
+              icon={Clock}
+              title="Altijd Beschikbaar"
+              description="Je AI-assistent werkt 24/7, 365 dagen per jaar. Geen wachttijden, altijd een antwoord."
+              color="red"
             />
           </div>
+        </div>
+      </section>
 
-          {/* Websites Grid */}
-          <h2 className="mt-10 mb-4 text-sm font-semibold uppercase tracking-widest text-white/25">
-            Websites ({tenants.length})
-          </h2>
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {tenants.map((tenant) => (
-              <WebsiteCard
-                key={tenant.id}
-                tenant={tenant}
-                monitor={monitorMap[tenant.id]}
-                analytics={analyticsMap[tenant.id]}
-              />
-            ))}
-            {tenants.length === 0 && (
-              <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-12 text-center">
-                <Globe className="mx-auto h-8 w-8 text-white/20" />
-                <p className="mt-3 text-sm text-white/40">Nog geen websites toegevoegd</p>
-                <Link
-                  href="/tenants"
-                  className="mt-4 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium transition hover:bg-brand-500"
-                >
-                  <Zap className="h-3 w-3" /> Website Toevoegen
-                </Link>
-              </div>
-            )}
+      {/* How it works */}
+      <section className="relative border-y border-white/5 bg-white/[0.01] px-6 py-24">
+        <div className="mx-auto max-w-4xl">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              In 3 stappen <span className="text-brand-400">live</span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-white/40">
+              Geen technische kennis nodig. Wij regelen alles.
+            </p>
           </div>
-        </>
-      )}
+
+          <div className="mt-16 space-y-8">
+            <StepCard
+              number="01"
+              title="Wij scannen je website"
+              description="Onze AI leest je hele website en leert alles over je producten, diensten en veelgestelde vragen."
+            />
+            <StepCard
+              number="02"
+              title="Widget wordt geplaatst"
+              description="Met een simpele WordPress plugin of een regel code verschijnt de chatbot op je site. Volledig in jouw huisstijl."
+            />
+            <StepCard
+              number="03"
+              title="Je assistent gaat live"
+              description="Vanaf nu beantwoordt je AI-assistent vragen, volgt bezoekers en stuurt leads door. Jij ziet alles in je dashboard."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Plans */}
+      <section id="plans" className="relative px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              Een pakket voor elke <span className="text-brand-400">ambitie</span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-white/40">
+              Start klein, groei mee. Upgrade wanneer je wilt.
+            </p>
+          </div>
+
+          <div className="mt-16 grid gap-6 lg:grid-cols-3">
+            <PlanCard
+              name="Tiny"
+              price="Gratis*"
+              description="Perfect om te starten"
+              features={[
+                "AI Chat op je website",
+                "Basis FAQ beantwoording",
+                "Tot 500 berichten/maand",
+                "TinyEclipse branding",
+              ]}
+            />
+            <PlanCard
+              name="Pro"
+              price="Op aanvraag"
+              description="Voor groeiende bedrijven"
+              featured
+              features={[
+                "Alles van Tiny +",
+                "Volledige kennisbank (RAG)",
+                "Visitor tracking & analytics",
+                "Lead scoring & escalatie",
+                "Eigen branding",
+                "24/7 site monitoring",
+              ]}
+            />
+            <PlanCard
+              name="Pro+"
+              price="Op aanvraag"
+              description="Enterprise & agencies"
+              features={[
+                "Alles van Pro +",
+                "Geavanceerde analytics",
+                "Multi-site management",
+                "API toegang",
+                "Dedicated support",
+                "Custom integraties",
+              ]}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section id="contact" className="relative px-6 py-24">
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-3xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-purple-600/5 to-brand-500/10 p-12 text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              Klaar om te starten?
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-white/50">
+              Neem contact op voor een gratis demo. Wij laten je zien hoe TinyEclipse jouw website slimmer maakt.
+            </p>
+            <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <a
+                href="mailto:info@digitalfarmers.be?subject=TinyEclipse%20Demo"
+                className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 px-8 py-4 text-base font-semibold transition hover:opacity-90"
+              >
+                Neem contact op
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              </a>
+              <a
+                href="tel:+32468123456"
+                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 py-4 text-base font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+              >
+                Bel ons
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-white/5 px-6 py-12">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-600">
+              <Zap className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-sm font-bold">
+              Tiny<span className="text-brand-500">Eclipse</span>
+            </span>
+          </div>
+          <p className="text-xs text-white/30">
+            &copy; {new Date().getFullYear()} Digital Farmers. Alle rechten voorbehouden.
+          </p>
+          <div className="flex items-center gap-6">
+            <a href="/privacy" className="text-xs text-white/30 transition hover:text-white/60">Privacy</a>
+            <a href="/terms" className="text-xs text-white/30 transition hover:text-white/60">Voorwaarden</a>
+            <Link href="/admin" className="text-xs text-white/30 transition hover:text-white/60">Admin</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
 
-function StatCard({
+function FeatureCard({
   icon: Icon,
-  label,
-  value,
-  sub,
-  color = "brand",
+  title,
+  description,
+  color,
 }: {
   icon: any;
-  label: string;
-  value: string | number;
-  sub?: string;
-  color?: string;
+  title: string;
+  description: string;
+  color: string;
 }) {
   const colors: Record<string, string> = {
-    brand: "from-brand-500/10 to-brand-600/5 border-brand-500/20",
-    green: "from-green-500/10 to-green-600/5 border-green-500/20",
-    red: "from-red-500/10 to-red-600/5 border-red-500/20",
-    yellow: "from-yellow-500/10 to-yellow-600/5 border-yellow-500/20",
-    purple: "from-purple-500/10 to-purple-600/5 border-purple-500/20",
-    blue: "from-blue-500/10 to-blue-600/5 border-blue-500/20",
+    brand: "from-brand-500/10 to-brand-600/5 border-brand-500/20 group-hover:border-brand-500/40",
+    green: "from-green-500/10 to-green-600/5 border-green-500/20 group-hover:border-green-500/40",
+    purple: "from-purple-500/10 to-purple-600/5 border-purple-500/20 group-hover:border-purple-500/40",
+    blue: "from-blue-500/10 to-blue-600/5 border-blue-500/20 group-hover:border-blue-500/40",
+    yellow: "from-yellow-500/10 to-yellow-600/5 border-yellow-500/20 group-hover:border-yellow-500/40",
+    red: "from-red-500/10 to-red-600/5 border-red-500/20 group-hover:border-red-500/40",
   };
   const iconColors: Record<string, string> = {
-    brand: "text-brand-500",
+    brand: "text-brand-400",
     green: "text-green-400",
-    red: "text-red-400",
-    yellow: "text-yellow-400",
     purple: "text-purple-400",
     blue: "text-blue-400",
+    yellow: "text-yellow-400",
+    red: "text-red-400",
   };
 
   return (
-    <div className={`rounded-xl border bg-gradient-to-br p-4 ${colors[color]}`}>
-      <div className="flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${iconColors[color]}`} />
-        <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">{label}</span>
+    <div className={`group rounded-2xl border bg-gradient-to-br p-6 transition ${colors[color]}`}>
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 ${iconColors[color]}`}>
+        <Icon className="h-5 w-5" />
       </div>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-white/35">{sub}</p>}
+      <h3 className="mt-4 text-base font-semibold">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-white/40">{description}</p>
     </div>
   );
 }
 
-function WebsiteCard({
-  tenant,
-  monitor,
-  analytics,
-}: {
-  tenant: Tenant;
-  monitor?: MonitorData;
-  analytics?: AnalyticsData;
-}) {
-  const statusColor =
-    monitor?.overall_status === "critical"
-      ? "bg-red-500"
-      : monitor?.overall_status === "warning"
-      ? "bg-yellow-500"
-      : monitor?.overall_status === "healthy"
-      ? "bg-green-500"
-      : "bg-white/20";
-
-  const planBadge: Record<string, string> = {
-    tiny: "bg-white/10 text-white/50",
-    pro: "bg-brand-500/20 text-brand-400",
-    pro_plus: "bg-purple-500/20 text-purple-400",
-  };
-
+function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
   return (
-    <div className="group rounded-2xl border border-white/5 bg-white/[0.02] p-5 transition hover:border-white/10 hover:bg-white/[0.04]">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
-          <div>
-            <h3 className="text-sm font-semibold">{tenant.name}</h3>
-            <p className="text-[11px] text-white/30">{tenant.domain || "No domain"}</p>
-          </div>
-        </div>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${planBadge[tenant.plan] || planBadge.tiny}`}>
-          {tenant.plan.toUpperCase()}
-        </span>
+    <div className="flex gap-6 rounded-2xl border border-white/5 bg-white/[0.02] p-6 transition hover:border-white/10">
+      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 text-lg font-bold">
+        {number}
       </div>
+      <div>
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="mt-1 text-sm text-white/40">{description}</p>
+      </div>
+    </div>
+  );
+}
 
-      {/* Monitoring Summary */}
-      {monitor && (
-        <div className="mt-4 flex gap-2">
-          {monitor.checks.slice(0, 6).map((check: any) => (
-            <div
-              key={check.id}
-              title={`${check.type}: ${check.status}`}
-              className={`h-1.5 flex-1 rounded-full ${
-                check.status === "ok"
-                  ? "bg-green-500/60"
-                  : check.status === "warning"
-                  ? "bg-yellow-500/60"
-                  : check.status === "critical"
-                  ? "bg-red-500/60"
-                  : "bg-white/10"
-              }`}
-            />
-          ))}
+function PlanCard({
+  name,
+  price,
+  description,
+  features,
+  featured = false,
+}: {
+  name: string;
+  price: string;
+  description: string;
+  features: string[];
+  featured?: boolean;
+}) {
+  return (
+    <div
+      className={`relative rounded-2xl border p-8 transition ${
+        featured
+          ? "border-brand-500/30 bg-gradient-to-br from-brand-500/10 to-purple-600/5"
+          : "border-white/5 bg-white/[0.02] hover:border-white/10"
+      }`}
+    >
+      {featured && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-brand-500 to-purple-600 px-4 py-1 text-[10px] font-bold uppercase tracking-wider">
+          Populairst
         </div>
       )}
-
-      {/* Stats Row */}
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <MiniStat
-          label="Bezoekers"
-          value={analytics?.summary?.total_sessions || 0}
-        />
-        <MiniStat
-          label="Pageviews"
-          value={analytics?.summary?.total_pageviews || 0}
-        />
-        <MiniStat
-          label="Bounce"
-          value={`${analytics?.summary?.bounce_rate || 0}%`}
-        />
-      </div>
-
-      {/* Actions */}
-      <div className="mt-4 flex gap-2">
-        <Link
-          href={`/tenants/${tenant.id}`}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-[11px] font-medium text-white/50 transition hover:bg-white/10 hover:text-white"
-        >
-          <Activity className="h-3 w-3" /> Details
-        </Link>
-        <Link
-          href={`/monitoring?tenant=${tenant.id}`}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-[11px] font-medium text-white/50 transition hover:bg-white/10 hover:text-white"
-        >
-          <Shield className="h-3 w-3" /> Monitor
-        </Link>
-        {tenant.domain && (
-          <a
-            href={`https://${tenant.domain}`}
-            target="_blank"
-            rel="noopener"
-            className="flex items-center justify-center rounded-lg bg-white/5 px-3 py-2 text-white/30 transition hover:bg-white/10 hover:text-white"
-          >
-            <ArrowUpRight className="h-3 w-3" />
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <p className="text-[10px] text-white/25">{label}</p>
-      <p className="text-sm font-semibold">{value}</p>
+      <h3 className="text-xl font-bold">{name}</h3>
+      <p className="mt-1 text-sm text-white/40">{description}</p>
+      <p className="mt-4 text-3xl font-extrabold">{price}</p>
+      <ul className="mt-6 space-y-3">
+        {features.map((f) => (
+          <li key={f} className="flex items-center gap-2 text-sm text-white/60">
+            <CheckCircle className="h-4 w-4 flex-shrink-0 text-green-400" />
+            {f}
+          </li>
+        ))}
+      </ul>
+      <a
+        href="#contact"
+        className={`mt-8 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition ${
+          featured
+            ? "bg-gradient-to-r from-brand-500 to-purple-600 hover:opacity-90"
+            : "border border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        {featured ? "Start nu" : "Meer info"}
+        <ChevronRight className="h-4 w-4" />
+      </a>
     </div>
   );
 }
