@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db, async_session
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, PlanType, TenantStatus
+from app.models.client_account import ClientAccount
+from app.models.site_module import SiteModule, ModuleType, ModuleStatus
 from app.models.conversation import Conversation
 from app.models.usage_log import UsageLog
 from app.models.source import Source, SourceType, SourceStatus
 from app.services.scraper import scrape_sitemap, scrape_url
 from app.services.embeddings import ingest_source
+from app.services.module_detector import detect_modules
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,26 @@ async def _auto_scrape_site(tenant_id: uuid.UUID, domain: str):
 
             await db.commit()
             logger.info(f"[auto-scrape] Completed for tenant {tenant_id}")
+
+            # Auto-detect modules after scraping
+            try:
+                detected = await detect_modules(domain)
+                for d in detected:
+                    module = SiteModule(
+                        tenant_id=tenant_id,
+                        module_type=ModuleType(d["module_type"]),
+                        name=d["name"],
+                        status=ModuleStatus.active,
+                        auto_detected=True,
+                        config={"found_paths": d.get("found_paths", []), "found_markers": d.get("found_markers", [])},
+                        stats={},
+                    )
+                    db.add(module)
+                await db.commit()
+                logger.info(f"[auto-detect] Found {len(detected)} modules for tenant {tenant_id}")
+            except Exception as e:
+                logger.warning(f"[auto-detect] Module detection failed for {tenant_id}: {e}")
+
         except Exception as e:
             logger.error(f"[auto-scrape] Fatal error for tenant {tenant_id}: {e}")
             await db.rollback()
@@ -126,17 +149,34 @@ async def create_tenant(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new tenant. If domain is provided and auto_scrape=True,
-    automatically scrapes and indexes the site in the background."""
-    # Check for duplicate whmcs_client_id
-    existing = await db.execute(
-        select(Tenant).where(Tenant.whmcs_client_id == body.whmcs_client_id)
+    automatically scrapes and indexes the site in the background.
+    Supports multi-project: same whmcs_client_id can have multiple tenants.
+    Auto-creates ClientAccount if needed."""
+    # Check for duplicate domain (same domain shouldn't exist twice)
+    if body.domain:
+        existing = await db.execute(
+            select(Tenant).where(Tenant.domain == body.domain)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f"Domain {body.domain} already exists")
+
+    # Auto-create or link ClientAccount
+    account_result = await db.execute(
+        select(ClientAccount).where(ClientAccount.whmcs_client_id == body.whmcs_client_id)
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="WHMCS Client ID already exists")
+    client_account = account_result.scalar_one_or_none()
+    if not client_account:
+        client_account = ClientAccount(
+            whmcs_client_id=body.whmcs_client_id,
+            name=body.name,
+        )
+        db.add(client_account)
+        await db.flush()
 
     tenant = Tenant(
         id=uuid.uuid4(),
         whmcs_client_id=body.whmcs_client_id,
+        client_account_id=client_account.id,
         name=body.name,
         plan=PlanType(body.plan),
         domain=body.domain,
@@ -207,6 +247,81 @@ async def get_tenant(
             "tokens_out": tokens_out,
         },
     }
+
+
+@router.post("/link-account")
+async def link_tenant_to_account(
+    db: AsyncSession = Depends(get_db),
+    whmcs_client_id: int = 0,
+    account_name: str = "",
+):
+    """Link all tenants with a given whmcs_client_id to a ClientAccount.
+    Creates the ClientAccount if it doesn't exist. Links any unlinked tenants."""
+    if not whmcs_client_id:
+        raise HTTPException(status_code=400, detail="whmcs_client_id required")
+
+    # Find or create ClientAccount
+    result = await db.execute(
+        select(ClientAccount).where(ClientAccount.whmcs_client_id == whmcs_client_id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        account = ClientAccount(
+            whmcs_client_id=whmcs_client_id,
+            name=account_name or f"Client #{whmcs_client_id}",
+        )
+        db.add(account)
+        await db.flush()
+
+    # Link all tenants with this whmcs_client_id
+    tenants_result = await db.execute(
+        select(Tenant).where(Tenant.whmcs_client_id == whmcs_client_id)
+    )
+    tenants = tenants_result.scalars().all()
+    linked = 0
+    for t in tenants:
+        if not t.client_account_id:
+            t.client_account_id = account.id
+            linked += 1
+    await db.flush()
+
+    return {
+        "account_id": str(account.id),
+        "whmcs_client_id": whmcs_client_id,
+        "name": account.name,
+        "total_tenants": len(tenants),
+        "newly_linked": linked,
+        "tenants": [{"id": str(t.id), "name": t.name, "domain": t.domain} for t in tenants],
+    }
+
+
+@router.get("/accounts")
+async def list_client_accounts(
+    db: AsyncSession = Depends(get_db),
+):
+    """List all client accounts with their tenants."""
+    result = await db.execute(select(ClientAccount).order_by(ClientAccount.created_at))
+    accounts = result.scalars().all()
+
+    output = []
+    for a in accounts:
+        tenants_result = await db.execute(
+            select(Tenant).where(Tenant.client_account_id == a.id)
+        )
+        tenants = tenants_result.scalars().all()
+        output.append({
+            "id": str(a.id),
+            "whmcs_client_id": a.whmcs_client_id,
+            "name": a.name,
+            "email": a.email,
+            "company": a.company,
+            "tenant_count": len(tenants),
+            "tenants": [
+                {"id": str(t.id), "name": t.name, "domain": t.domain, "plan": t.plan.value}
+                for t in tenants
+            ],
+        })
+    return output
 
 
 @router.patch("/{tenant_id}")
