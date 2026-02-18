@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
@@ -10,13 +13,40 @@ import {
   Activity,
   Bell,
   Zap,
+  LogOut,
 } from "lucide-react";
+import { AuthProvider, useAuth } from "@/lib/auth";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <AuthProvider>
+      <AdminShell>{children}</AdminShell>
+    </AuthProvider>
+  );
+}
+
+function AdminShell({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
+  const pathname = usePathname();
+
+  // Login page: no sidebar/topbar
+  if (pathname === "/admin/login") {
+    return <>{children}</>;
+  }
+
+  // Not authenticated: show nothing (AuthProvider will redirect)
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -29,6 +59,8 @@ export default function AdminLayout({
 }
 
 function TopBar() {
+  const { logout } = useAuth();
+
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/5 bg-brand-950/80 px-6 backdrop-blur-xl lg:px-8">
       <div />
@@ -41,6 +73,13 @@ function TopBar() {
           <div className="h-6 w-6 rounded-full bg-gradient-to-br from-brand-500 to-purple-600" />
           <span className="text-xs font-medium text-white/70">DF Admin</span>
         </div>
+        <button
+          onClick={logout}
+          className="flex items-center gap-1.5 rounded-lg p-2 text-white/30 transition hover:bg-red-500/10 hover:text-red-400"
+          title="Uitloggen"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   );
