@@ -15,6 +15,7 @@ import {
   Lock,
   Crown,
   Puzzle,
+  Mail,
 } from "lucide-react";
 import type { PlanFeatures } from "@/lib/usePortalSession";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
@@ -108,6 +109,7 @@ function PortalSidebar({ features }: { features: PlanFeatures | null }) {
     { href: "/portal/ai", label: "AI Assistent", icon: Bot, locked: false },
     { href: "/portal/monitoring", label: "Monitoring", icon: Shield, locked: false },
     { href: "/portal/modules", label: "Modules", icon: Puzzle, locked: false },
+    { href: "/portal/mail", label: "E-mail", icon: Mail, locked: false },
     { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3, locked: features ? !features.features.analytics_basic : false },
     { href: "/portal/conversations", label: "Gesprekken", icon: MessageSquare, locked: false },
   ];

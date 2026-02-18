@@ -6,11 +6,33 @@ import Link from "next/link";
 import {
   Globe, Shield, MessageSquare, Database, Users, Eye, Clock,
   ArrowUpRight, RefreshCw, Copy, Check, TrendingUp,
+  Briefcase, ShoppingCart, Gift, FileText, Mail, BookOpen,
+  Calendar, MessageCircle, Puzzle, Scan, CheckCircle, XCircle,
+  AlertTriangle, Link2,
 } from "lucide-react";
 import {
   getTenant, getMonitoringDashboard, getAnalytics,
   getConversations, getSources, getEmbedConfig, setupMonitoring,
 } from "@/lib/api";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY || "";
+
+const MODULE_ICONS: Record<string, any> = {
+  jobs: Briefcase, shop: ShoppingCart, giftcard: Gift, forms: FileText,
+  mail: Mail, blog: BookOpen, booking: Calendar, forum: MessageCircle, custom: Puzzle,
+};
+const MODULE_COLORS: Record<string, string> = {
+  jobs: "border-blue-500/20 bg-blue-500/10 text-blue-400",
+  shop: "border-green-500/20 bg-green-500/10 text-green-400",
+  giftcard: "border-pink-500/20 bg-pink-500/10 text-pink-400",
+  forms: "border-purple-500/20 bg-purple-500/10 text-purple-400",
+  mail: "border-orange-500/20 bg-orange-500/10 text-orange-400",
+  blog: "border-cyan-500/20 bg-cyan-500/10 text-cyan-400",
+  booking: "border-yellow-500/20 bg-yellow-500/10 text-yellow-400",
+  forum: "border-indigo-500/20 bg-indigo-500/10 text-indigo-400",
+  custom: "border-white/10 bg-white/5 text-white/50",
+};
 
 export default function TenantDetailPage() {
   const params = useParams();
@@ -21,8 +43,11 @@ export default function TenantDetailPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [sources, setSources] = useState<any[]>([]);
   const [embedConfig, setEmbedConfig] = useState<any>(null);
+  const [modules, setModules] = useState<any[]>([]);
+  const [siblings, setSiblings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => { loadAll(); }, [id]);
 
@@ -38,7 +63,22 @@ export default function TenantDetailPage() {
         getEmbedConfig(id).catch(() => null),
       ]);
       setTenant(t); setMonitor(m); setAnalytics(a); setConversations(c); setSources(s); setEmbedConfig(e);
+
+      // Load modules and sibling projects
+      fetch(`${API_URL}/api/portal/projects/${id}/modules`).then(r => r.ok ? r.json() : []).then(setModules).catch(() => {});
+      fetch(`${API_URL}/api/portal/projects/by-tenant/${id}`).then(r => r.ok ? r.json() : null).then(d => { if (d?.projects) setSiblings(d.projects); }).catch(() => {});
     } finally { setLoading(false); }
+  }
+
+  async function scanModules() {
+    setScanning(true);
+    try {
+      const r = await fetch(`${API_URL}/api/portal/projects/${id}/modules/detect`, { method: "POST" });
+      if (r.ok) {
+        const mods = await fetch(`${API_URL}/api/portal/projects/${id}/modules`);
+        if (mods.ok) setModules(await mods.json());
+      }
+    } catch {} finally { setScanning(false); }
   }
 
   function copyId(text: string) { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -108,6 +148,55 @@ export default function TenantDetailPage() {
           ))}</div>
         ) : <p className="py-4 text-center text-xs text-white/30">Nog geen gesprekken</p>}
       </Sec>
+
+      <Sec title="Modules" icon={Puzzle}>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[10px] text-white/30">{modules.length} module{modules.length !== 1 ? "s" : ""} actief</p>
+          <button onClick={scanModules} disabled={scanning} className="flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-3 py-1.5 text-[10px] font-medium text-brand-400 transition hover:bg-brand-500/20 disabled:opacity-50">
+            {scanning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Scan className="h-3 w-3" />}
+            {scanning ? "Scannen..." : "Scan Site"}
+          </button>
+        </div>
+        {modules.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {modules.map((m: any) => {
+              const Icon = MODULE_ICONS[m.module_type] || Puzzle;
+              const colors = MODULE_COLORS[m.module_type] || MODULE_COLORS.custom;
+              const StatusIcon = m.status === "active" ? CheckCircle : m.status === "error" ? XCircle : AlertTriangle;
+              const statusColor = m.status === "active" ? "text-green-400" : m.status === "error" ? "text-red-400" : "text-yellow-400";
+              return (
+                <div key={m.id} className={`rounded-lg border p-3 ${colors}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4" />
+                      <span className="text-xs font-semibold">{m.name}</span>
+                    </div>
+                    <StatusIcon className={`h-3 w-3 ${statusColor}`} />
+                  </div>
+                  {m.auto_detected && <p className="mt-1 text-[9px] text-white/25">Auto-detected</p>}
+                </div>
+              );
+            })}
+          </div>
+        ) : <p className="py-4 text-center text-xs text-white/30">Geen modules — klik &quot;Scan Site&quot; om te detecteren</p>}
+      </Sec>
+
+      {siblings.length > 1 && (
+        <Sec title="Zuster Projecten" icon={Link2}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {siblings.filter((s: any) => s.tenant_id !== id).map((s: any) => (
+              <Link key={s.tenant_id} href={`/admin/tenants/${s.tenant_id}`} className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 transition hover:bg-white/[0.04]">
+                <Globe className="h-4 w-4 text-white/30" />
+                <div>
+                  <p className="text-xs font-medium">{s.name}</p>
+                  <p className="text-[10px] text-white/30">{s.domain}</p>
+                </div>
+                <span className={`ml-auto rounded-full px-2 py-0.5 text-[9px] font-medium ${s.plan === "pro" ? "bg-brand-500/20 text-brand-400" : s.plan === "pro_plus" ? "bg-purple-500/20 text-purple-400" : "bg-white/10 text-white/40"}`}>{s.plan}</span>
+              </Link>
+            ))}
+          </div>
+        </Sec>
+      )}
 
       <Sec title="Kennisbronnen" icon={Database}>
         {sources.length > 0 ? (

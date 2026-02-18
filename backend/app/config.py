@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     whmcs_product_pro: int = 0  # WHMCS Product ID for Pro plan
     whmcs_product_pro_plus: int = 0  # WHMCS Product ID for Pro+ plan
 
+    # DirectAdmin Integration
+    directadmin_url: str = ""  # e.g. https://server.digitalfarmers.be:2222
+    directadmin_user: str = ""  # Admin/reseller username
+    directadmin_login_key: str = ""  # Login key or password
+
     # Widget
     widget_base_url: str = "http://localhost:8000"
 
