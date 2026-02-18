@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -11,10 +12,28 @@ import {
   LogOut,
   Bot,
   Activity,
+  Lock,
+  Crown,
 } from "lucide-react";
+import type { PlanFeatures } from "@/lib/usePortalSession";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [features, setFeatures] = useState<PlanFeatures | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("te_portal_session");
+    if (!raw) return;
+    try {
+      const s = JSON.parse(raw);
+      fetch(`${API_URL}/api/portal/features/${s.tenant_id}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setFeatures(d); })
+        .catch(() => {});
+    } catch {}
+  }, []);
 
   // Login page: no chrome
   if (pathname === "/portal/login") {
@@ -23,24 +42,37 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="flex min-h-screen">
-      <PortalSidebar />
+      <PortalSidebar features={features} />
       <main className="flex-1 overflow-auto">
-        <PortalTopBar />
+        <PortalTopBar features={features} />
         <div className="p-6 lg:p-8">{children}</div>
       </main>
     </div>
   );
 }
 
-function PortalTopBar() {
+function PortalTopBar({ features }: { features: PlanFeatures | null }) {
   function handleLogout() {
     sessionStorage.removeItem("te_portal_session");
     window.location.href = "/portal/login";
   }
 
+  const planColors: Record<string, string> = {
+    tiny: "bg-white/10 text-white/50",
+    pro: "bg-brand-500/20 text-brand-400",
+    pro_plus: "bg-gradient-to-r from-brand-500/20 to-purple-500/20 text-purple-400",
+  };
+
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/5 bg-brand-950/80 px-6 backdrop-blur-xl lg:px-8">
-      <div />
+      <div className="flex items-center gap-2">
+        {features && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${planColors[features.plan] || planColors.tiny}`}>
+            {features.plan === "pro_plus" && <Crown className="h-2.5 w-2.5" />}
+            {features.plan_label}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-3">
         <a
           href="https://my.digitalfarmers.be/clientarea.php"
@@ -62,16 +94,16 @@ function PortalTopBar() {
   );
 }
 
-function PortalSidebar() {
+function PortalSidebar({ features }: { features: PlanFeatures | null }) {
   const pathname = usePathname();
 
   const items = [
-    { href: "/portal", label: "Overzicht", icon: LayoutDashboard },
-    { href: "/portal/events", label: "Activiteit", icon: Activity },
-    { href: "/portal/ai", label: "AI Assistent", icon: Bot },
-    { href: "/portal/monitoring", label: "Monitoring", icon: Shield },
-    { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3 },
-    { href: "/portal/conversations", label: "Gesprekken", icon: MessageSquare },
+    { href: "/portal", label: "Overzicht", icon: LayoutDashboard, locked: false },
+    { href: "/portal/events", label: "Activiteit", icon: Activity, locked: false },
+    { href: "/portal/ai", label: "AI Assistent", icon: Bot, locked: false },
+    { href: "/portal/monitoring", label: "Monitoring", icon: Shield, locked: false },
+    { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3, locked: features ? !features.features.analytics_basic : false },
+    { href: "/portal/conversations", label: "Gesprekken", icon: MessageSquare, locked: false },
   ];
 
   return (
@@ -96,15 +128,19 @@ function PortalSidebar() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.locked ? "#" : item.href}
+                onClick={item.locked ? (e) => e.preventDefault() : undefined}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-all ${
-                  active
+                  item.locked
+                    ? "cursor-not-allowed text-white/20"
+                    : active
                     ? "bg-brand-500/10 text-brand-400"
                     : "text-white/50 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {item.locked && <Lock className="ml-auto h-3 w-3 text-white/15" />}
               </Link>
             );
           })}
@@ -112,6 +148,20 @@ function PortalSidebar() {
       </nav>
 
       <div className="border-t border-white/5 p-4">
+        {features && features.plan === "tiny" && (
+          <a
+            href={features.upgrade_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-3 flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500/20 to-purple-500/20 p-3 transition hover:from-brand-500/30 hover:to-purple-500/30"
+          >
+            <Crown className="h-4 w-4 text-brand-400" />
+            <div>
+              <p className="text-[11px] font-semibold text-brand-400">Upgrade naar Pro</p>
+              <p className="text-[9px] text-white/30">Meer features, meer inzicht</p>
+            </div>
+          </a>
+        )}
         <div className="rounded-lg bg-gradient-to-r from-brand-600/20 to-purple-600/20 p-3">
           <div className="flex items-center gap-2">
             <Activity className="h-3.5 w-3.5 text-green-400" />

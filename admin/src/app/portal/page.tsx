@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Shield,
   ShieldCheck,
@@ -12,72 +11,19 @@ import {
   ArrowUpRight,
   Database,
   Zap,
+  Activity,
+  Flame,
+  Crown,
 } from "lucide-react";
+import { usePortalSession } from "@/lib/usePortalSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-interface PortalSession {
-  tenant_id: string;
-  tenant_name: string;
-  domain: string;
-  plan: string;
-}
-
-function usePortalSession(): PortalSession | null {
-  const [session, setSession] = useState<PortalSession | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    // Check for SSO auto-login from WHMCS: ?sso=tenant_id:timestamp:signature
-    const params = new URLSearchParams(window.location.search);
-    const sso = params.get("sso");
-    if (sso) {
-      const parts = sso.split(":");
-      if (parts.length >= 3) {
-        const tenantId = parts[0];
-        const token = parts.slice(1).join(":");
-        fetch(`${API_URL}/api/portal/verify?tenant_id=${tenantId}&token=${encodeURIComponent(token)}`)
-          .then((r) => r.ok ? r.json() : null)
-          .then((data) => {
-            if (data?.verified) {
-              const sess = {
-                tenant_id: data.tenant_id,
-                tenant_name: data.tenant_name,
-                domain: data.domain,
-                plan: data.plan,
-              };
-              sessionStorage.setItem("te_portal_session", JSON.stringify(sess));
-              setSession(sess);
-              // Clean URL
-              window.history.replaceState({}, "", "/portal");
-            } else {
-              router.replace("/portal/login");
-            }
-          })
-          .catch(() => router.replace("/portal/login"));
-        return;
-      }
-    }
-
-    const raw = sessionStorage.getItem("te_portal_session");
-    if (!raw) {
-      router.replace("/portal/login");
-      return;
-    }
-    try {
-      setSession(JSON.parse(raw));
-    } catch {
-      router.replace("/portal/login");
-    }
-  }, [router]);
-
-  return session;
-}
-
 export default function PortalDashboard() {
-  const session = usePortalSession();
+  const { session, features } = usePortalSession();
   const [monitoring, setMonitoring] = useState<any>(null);
   const [sources, setSources] = useState<number>(0);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -90,13 +36,16 @@ export default function PortalDashboard() {
     setLoading(true);
     try {
       // Fetch monitoring dashboard (public-ish, uses tenant_id)
-      const [monRes, srcRes] = await Promise.allSettled([
+      const [monRes, srcRes, statsRes] = await Promise.allSettled([
         fetch(`${API_URL}/api/admin/monitoring/dashboard/${session.tenant_id}`, {
           headers: { "X-Admin-Key": "" },
           cache: "no-store",
         }),
         fetch(`${API_URL}/api/admin/sources/?tenant_id=${session.tenant_id}`, {
           headers: { "X-Admin-Key": "" },
+          cache: "no-store",
+        }),
+        fetch(`${API_URL}/api/portal/events/${session.tenant_id}/stats`, {
           cache: "no-store",
         }),
       ]);
@@ -107,6 +56,9 @@ export default function PortalDashboard() {
       if (srcRes.status === "fulfilled" && srcRes.value.ok) {
         const data = await srcRes.value.json();
         setSources(Array.isArray(data) ? data.length : 0);
+      }
+      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
+        setStats(await statsRes.value.json());
       }
     } catch {}
     setLoading(false);
@@ -223,11 +175,55 @@ export default function PortalDashboard() {
             </div>
           </div>
 
+          {/* Activity Summary */}
+          {stats && (
+            <>
+              <h2 className="mt-8 mb-4 text-sm font-semibold uppercase tracking-widest text-white/25">
+                Laatste 24 uur
+              </h2>
+              <div className="grid gap-2 sm:grid-cols-4">
+                <div className="flex items-center gap-3 rounded-xl border border-brand-500/20 bg-brand-500/5 p-3">
+                  <MessageSquare className="h-4 w-4 text-brand-400" />
+                  <div>
+                    <p className="text-lg font-bold">{stats.last_24h.conversations}</p>
+                    <p className="text-[10px] text-white/30">Gesprekken</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
+                  <Users className="h-4 w-4 text-blue-400" />
+                  <div>
+                    <p className="text-lg font-bold">{stats.last_24h.visitors}</p>
+                    <p className="text-[10px] text-white/30">Bezoekers</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                  <ShieldAlert className="h-4 w-4 text-red-400" />
+                  <div>
+                    <p className="text-lg font-bold">{stats.last_24h.alerts}</p>
+                    <p className="text-[10px] text-white/30">Alerts</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
+                  <Flame className="h-4 w-4 text-orange-400" />
+                  <div>
+                    <p className="text-lg font-bold">{stats.last_7d.conversations}</p>
+                    <p className="text-[10px] text-white/30">Chats 7d</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Quick Actions */}
           <h2 className="mt-8 mb-4 text-sm font-semibold uppercase tracking-widest text-white/25">
             Snel Toegang
           </h2>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <a href="/portal/events" className="group rounded-xl border border-white/5 bg-white/[0.02] p-5 transition hover:border-orange-500/20 hover:bg-orange-500/5">
+              <Activity className="h-5 w-5 text-orange-400" />
+              <h3 className="mt-3 text-sm font-semibold">Activiteit</h3>
+              <p className="mt-1 text-xs text-white/40">Alles wat er gebeurt: leads, chats, alerts, bezoekers.</p>
+            </a>
             <a href="/portal/ai" className="group rounded-xl border border-white/5 bg-white/[0.02] p-5 transition hover:border-brand-500/20 hover:bg-brand-500/5">
               <Bot className="h-5 w-5 text-brand-400" />
               <h3 className="mt-3 text-sm font-semibold">AI Assistent</h3>
@@ -238,10 +234,10 @@ export default function PortalDashboard() {
               <h3 className="mt-3 text-sm font-semibold">Monitoring</h3>
               <p className="mt-1 text-xs text-white/40">Uptime, SSL, DNS en performance van je site.</p>
             </a>
-            <a href="/portal/analytics" className="group rounded-xl border border-white/5 bg-white/[0.02] p-5 transition hover:border-purple-500/20 hover:bg-purple-500/5">
-              <Users className="h-5 w-5 text-purple-400" />
-              <h3 className="mt-3 text-sm font-semibold">Bezoekers</h3>
-              <p className="mt-1 text-xs text-white/40">Bekijk wie je site bezoekt en wat ze doen.</p>
+            <a href="/portal/conversations" className="group rounded-xl border border-white/5 bg-white/[0.02] p-5 transition hover:border-purple-500/20 hover:bg-purple-500/5">
+              <MessageSquare className="h-5 w-5 text-purple-400" />
+              <h3 className="mt-3 text-sm font-semibold">Gesprekken</h3>
+              <p className="mt-1 text-xs text-white/40">Bekijk alle AI-gesprekken van je bezoekers.</p>
             </a>
           </div>
 
