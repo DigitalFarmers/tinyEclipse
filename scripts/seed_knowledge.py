@@ -5,7 +5,7 @@ import httpx
 
 API = "https://api.tinyeclipse.digitalfarmers.be"
 KEY = "te-admin-bN5cF8hJ3kM6pS9u"
-TID = "0c42ced7-35e0-4d46-b731-e5a193a4cd77"
+TID = "e71307b8-a263-4a0f-bdb5-64060fcd84d1"
 HEADERS = {"X-Admin-Key": KEY, "Content-Type": "application/json"}
 
 PAGES = [
