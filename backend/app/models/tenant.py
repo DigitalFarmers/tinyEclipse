@@ -20,6 +20,11 @@ class TenantStatus(str, enum.Enum):
     suspended = "suspended"
 
 
+class TenantEnvironment(str, enum.Enum):
+    production = "production"
+    staging = "staging"
+
+
 class Tenant(Base):
     __tablename__ = "tenants"
 
@@ -30,6 +35,7 @@ class Tenant(Base):
     plan: Mapped[PlanType] = mapped_column(Enum(PlanType), nullable=False, default=PlanType.tiny)
     status: Mapped[TenantStatus] = mapped_column(Enum(TenantStatus), nullable=False, default=TenantStatus.active)
     domain: Mapped[str] = mapped_column(String(255), nullable=True)
+    environment: Mapped[TenantEnvironment] = mapped_column(Enum(TenantEnvironment), nullable=False, default=TenantEnvironment.production)
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

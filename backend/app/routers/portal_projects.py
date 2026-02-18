@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.client_account import ClientAccount
-from app.models.tenant import Tenant, TenantStatus
+from app.models.tenant import Tenant, TenantStatus, TenantEnvironment
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
 from app.models.conversation import Conversation
 from app.models.monitor import Alert
@@ -37,9 +37,13 @@ async def get_client_projects(
     whmcs_client_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all projects/tenants for a WHMCS client. Used by portal for multi-project view."""
+    """Get all projects/tenants for a WHMCS client. Used by portal for multi-project view.
+    Filters out staging tenants — clients only see production."""
     result = await db.execute(
-        select(Tenant).where(Tenant.whmcs_client_id == whmcs_client_id).order_by(Tenant.created_at)
+        select(Tenant).where(and_(
+            Tenant.whmcs_client_id == whmcs_client_id,
+            Tenant.environment == TenantEnvironment.production,
+        )).order_by(Tenant.created_at)
     )
     tenants = result.scalars().all()
 
@@ -114,14 +118,19 @@ async def get_sibling_projects(
     tenant_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all sibling projects for a tenant (same whmcs_client_id). Used by portal project switcher."""
+    """Get all sibling projects for a tenant (same whmcs_client_id). Used by portal project switcher.
+    Filters out staging tenants — clients only see production."""
     tenant = await db.get(Tenant, uuid.UUID(tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     result = await db.execute(
         select(Tenant)
-        .where(and_(Tenant.whmcs_client_id == tenant.whmcs_client_id, Tenant.status == TenantStatus.active))
+        .where(and_(
+            Tenant.whmcs_client_id == tenant.whmcs_client_id,
+            Tenant.status == TenantStatus.active,
+            Tenant.environment == TenantEnvironment.production,
+        ))
         .order_by(Tenant.created_at)
     )
     siblings = result.scalars().all()
@@ -324,6 +333,7 @@ async def admin_superview(
             "domain": t.domain,
             "plan": t.plan.value,
             "status": t.status.value,
+            "environment": t.environment.value if hasattr(t, 'environment') and t.environment else "production",
             "whmcs_client_id": t.whmcs_client_id,
             "chats_24h": chats.scalar() or 0,
             "open_alerts": alerts.scalar() or 0,

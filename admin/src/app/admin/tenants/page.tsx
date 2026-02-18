@@ -11,6 +11,7 @@ interface Tenant {
   plan: string;
   status: string;
   domain: string | null;
+  environment?: string;
   created_at: string;
 }
 
@@ -48,21 +49,26 @@ export default function TenantsPage() {
               <th className="px-4 py-3 text-left font-medium text-white/50">Plan</th>
               <th className="px-4 py-3 text-left font-medium text-white/50">Status</th>
               <th className="px-4 py-3 text-left font-medium text-white/50">Domain</th>
+              <th className="px-4 py-3 text-left font-medium text-white/50">Env</th>
               <th className="px-4 py-3 text-left font-medium text-white/50">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {tenants.map((t) => (
-              <tr key={t.id} className="transition hover:bg-white/5">
-                <td className="px-4 py-3 font-medium">{t.name}</td>
-                <td className="px-4 py-3 text-white/60">{t.whmcs_client_id}</td>
-                <td className="px-4 py-3"><PlanBadge plan={t.plan} /></td>
-                <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                <td className="px-4 py-3 text-white/60">{t.domain || "—"}</td>
-                <td className="px-4 py-3"><Link href={`/admin/tenants/${t.id}`} className="text-brand-500 hover:text-brand-400">View</Link></td>
-              </tr>
-            ))}
-            {tenants.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-white/30">No tenants yet.</td></tr>}
+            {tenants.map((t) => {
+              const isStaging = t.environment === "staging";
+              return (
+                <tr key={t.id} className={`transition hover:bg-white/5 ${isStaging ? "opacity-60" : ""}`}>
+                  <td className="px-4 py-3 font-medium">{t.name}</td>
+                  <td className="px-4 py-3 text-white/60">{t.whmcs_client_id}</td>
+                  <td className="px-4 py-3"><PlanBadge plan={t.plan} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+                  <td className="px-4 py-3 text-white/60">{t.domain || "—"}</td>
+                  <td className="px-4 py-3">{isStaging ? <span className="inline-flex items-center gap-1 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-400">🔧 staging</span> : <span className="text-[10px] text-white/30">production</span>}</td>
+                  <td className="px-4 py-3"><Link href={`/admin/tenants/${t.id}`} className="text-brand-500 hover:text-brand-400">View</Link></td>
+                </tr>
+              );
+            })}
+            {tenants.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-white/30">No tenants yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -81,7 +87,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function CreateTenantForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ whmcs_client_id: "", name: "", plan: "pro", domain: "" });
+  const [form, setForm] = useState({ whmcs_client_id: "", name: "", plan: "pro", domain: "", environment: "production" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +96,7 @@ function CreateTenantForm({ onCreated, onCancel }: { onCreated: () => void; onCa
     setLoading(true);
     setError(null);
     try {
-      await createTenant({ whmcs_client_id: parseInt(form.whmcs_client_id), name: form.name, plan: form.plan, domain: form.domain || undefined });
+      await createTenant({ whmcs_client_id: parseInt(form.whmcs_client_id), name: form.name, plan: form.plan, domain: form.domain || undefined, environment: form.environment });
       onCreated();
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
@@ -104,6 +110,7 @@ function CreateTenantForm({ onCreated, onCancel }: { onCreated: () => void; onCa
         <div><label className="block text-xs font-medium text-white/50">Company Name</label><input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-500" /></div>
         <div><label className="block text-xs font-medium text-white/50">Plan</label><select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-500"><option value="tiny">Tiny</option><option value="pro">Pro</option><option value="pro_plus">Pro+</option></select></div>
         <div><label className="block text-xs font-medium text-white/50">Domain</label><input type="text" placeholder="example.com" value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-500" /></div>
+        <div><label className="block text-xs font-medium text-white/50">Environment</label><select value={form.environment} onChange={(e) => setForm({ ...form, environment: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-brand-500"><option value="production">Production</option><option value="staging">Staging</option></select></div>
       </div>
       <div className="mt-6 flex gap-3">
         <button type="submit" disabled={loading} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium transition hover:bg-brand-700 disabled:opacity-50">{loading ? "Creating..." : "Create Tenant"}</button>

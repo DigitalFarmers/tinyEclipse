@@ -3,7 +3,7 @@
  * Plugin Name: TinyEclipse Connector
  * Plugin URI: https://tinyeclipse.digitalfarmers.be
  * Description: Connect your WordPress site to TinyEclipse — AI Chat, Visitor Tracking, Proactive Help & 24/7 Monitoring by Digital Farmers.
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Digital Farmers
  * Author URI: https://digitalfarmers.be
  * License: GPL v2 or later
@@ -15,7 +15,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('TINYECLIPSE_VERSION', '1.0.0');
+define('TINYECLIPSE_VERSION', '2.0.0');
 define('TINYECLIPSE_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TINYECLIPSE_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TINYECLIPSE_API_BASE', 'https://api.tinyeclipse.digitalfarmers.be');
@@ -327,6 +327,230 @@ register_activation_hook(__FILE__, function () {
 register_deactivation_hook(__FILE__, function () {
     // Keep settings so they persist if re-activated
 });
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE EVENTS — Auto-report site activity to TinyEclipse Hub
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Detect if this site is a staging environment.
+ * Checks WP_ENVIRONMENT_TYPE, domain prefix, and common staging indicators.
+ */
+function tinyeclipse_is_staging() {
+    // WordPress 5.5+ environment type
+    if (function_exists('wp_get_environment_type')) {
+        $env = wp_get_environment_type();
+        if (in_array($env, ['staging', 'development', 'local'])) return true;
+    }
+    // Domain-based detection
+    $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+    if (strpos($host, 'staging.') === 0) return true;
+    if (strpos($host, 'dev.') === 0) return true;
+    if (strpos($host, 'test.') === 0) return true;
+    if (strpos($host, '.local') !== false) return true;
+    if (strpos($host, 'localhost') !== false) return true;
+    return false;
+}
+
+/**
+ * Send a module event to the TinyEclipse API.
+ *
+ * @param string $module_type  Module: jobs, shop, giftcard, forms, booking
+ * @param string $event_type   Event: order_placed, form_submitted, job_application, etc.
+ * @param string $title        Human-readable title
+ * @param string $description  Optional description
+ * @param array  $data         Flexible event data payload
+ * @param string $source_url   URL where event originated
+ */
+function tinyeclipse_send_event($module_type, $event_type, $title, $description = '', $data = [], $source_url = '') {
+    $tenant_id = get_option('tinyeclipse_tenant_id', '');
+    if (empty($tenant_id)) return;
+
+    $data['environment'] = tinyeclipse_is_staging() ? 'staging' : 'production';
+    $data['site_url'] = get_site_url();
+    $data['site_name'] = get_bloginfo('name');
+
+    $body = [
+        'module_type'  => $module_type,
+        'event_type'   => $event_type,
+        'title'        => $title,
+        'description'  => $description,
+        'data'         => $data,
+        'source_url'   => $source_url ?: get_site_url(),
+    ];
+
+    wp_remote_post(TINYECLIPSE_API_BASE . '/api/module-events/' . $tenant_id, [
+        'timeout'  => 5,
+        'blocking' => false,
+        'headers'  => ['Content-Type' => 'application/json'],
+        'body'     => wp_json_encode($body),
+    ]);
+}
+
+// ─── WooCommerce: New Order ───
+add_action('woocommerce_new_order', function ($order_id) {
+    if (!function_exists('wc_get_order')) return;
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    $total = $order->get_total();
+    $items = $order->get_item_count();
+    $billing_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
+    $email = $order->get_billing_email();
+
+    tinyeclipse_send_event('shop', 'order_placed',
+        "Nieuwe bestelling #{$order_id} — €{$total}",
+        "{$items} artikel(en) door {$billing_name}",
+        [
+            'order_id'     => $order_id,
+            'total'        => (float)$total,
+            'currency'     => $order->get_currency(),
+            'items'        => $items,
+            'customer'     => $billing_name,
+            'email'        => $email,
+            'status'       => $order->get_status(),
+            'payment'      => $order->get_payment_method_title(),
+        ],
+        $order->get_view_order_url()
+    );
+});
+
+// ─── WooCommerce: Order Completed ───
+add_action('woocommerce_order_status_completed', function ($order_id) {
+    if (!function_exists('wc_get_order')) return;
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    tinyeclipse_send_event('shop', 'order_completed',
+        "Bestelling #{$order_id} afgerond — €" . $order->get_total(),
+        $order->get_item_count() . ' artikel(en)',
+        ['order_id' => $order_id, 'total' => (float)$order->get_total()]
+    );
+});
+
+// ─── WooCommerce: Order Refunded ───
+add_action('woocommerce_order_status_refunded', function ($order_id) {
+    if (!function_exists('wc_get_order')) return;
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    tinyeclipse_send_event('shop', 'order_refunded',
+        "Bestelling #{$order_id} terugbetaald — €" . $order->get_total(),
+        '',
+        ['order_id' => $order_id, 'total' => (float)$order->get_total()]
+    );
+});
+
+// ─── FluentForms: Form Submitted ───
+add_action('fluentform/submission_inserted', function ($submission_id, $form_data, $form) {
+    $form_title = isset($form->title) ? $form->title : 'Formulier';
+    $name = '';
+    $email = '';
+
+    // Try to extract name/email from common field names
+    foreach (['name', 'naam', 'full_name', 'your-name'] as $key) {
+        if (!empty($form_data[$key])) { $name = $form_data[$key]; break; }
+    }
+    foreach (['email', 'e-mail', 'your-email', 'mail'] as $key) {
+        if (!empty($form_data[$key])) { $email = $form_data[$key]; break; }
+    }
+
+    $desc = $name ? "Door {$name}" : '';
+    if ($email && $desc) $desc .= " ({$email})";
+    elseif ($email) $desc = $email;
+
+    tinyeclipse_send_event('forms', 'form_submitted',
+        "Formulier ingevuld: {$form_title}",
+        $desc,
+        [
+            'form_id'       => isset($form->id) ? $form->id : null,
+            'form_title'    => $form_title,
+            'submission_id' => $submission_id,
+            'name'          => $name,
+            'email'         => $email,
+            'field_count'   => count($form_data),
+        ]
+    );
+}, 10, 3);
+
+// ─── Contact Form 7: Form Submitted ───
+add_action('wpcf7_mail_sent', function ($contact_form) {
+    $submission = class_exists('WPCF7_Submission') ? WPCF7_Submission::get_instance() : null;
+    $data = $submission ? $submission->get_posted_data() : [];
+    $form_title = $contact_form->title();
+
+    $name = '';
+    $email = '';
+    foreach (['your-name', 'name', 'naam'] as $key) {
+        if (!empty($data[$key])) { $name = $data[$key]; break; }
+    }
+    foreach (['your-email', 'email', 'e-mail'] as $key) {
+        if (!empty($data[$key])) { $email = $data[$key]; break; }
+    }
+
+    $desc = $name ? "Door {$name}" : '';
+    if ($email && $desc) $desc .= " ({$email})";
+    elseif ($email) $desc = $email;
+
+    tinyeclipse_send_event('forms', 'form_submitted',
+        "Contactformulier: {$form_title}",
+        $desc,
+        [
+            'form_id'    => $contact_form->id(),
+            'form_title' => $form_title,
+            'name'       => $name,
+            'email'      => $email,
+        ]
+    );
+});
+
+// ─── WP Job Manager: Job Application ───
+add_action('new_job_application', function ($application_id, $job_id) {
+    $application = get_post($application_id);
+    $job = get_post($job_id);
+    $job_title = $job ? $job->post_title : 'Onbekende vacature';
+    $applicant = $application ? $application->post_title : 'Onbekend';
+
+    tinyeclipse_send_event('jobs', 'job_application',
+        "Sollicitatie ontvangen: {$job_title}",
+        "Door {$applicant}",
+        [
+            'application_id' => $application_id,
+            'job_id'         => $job_id,
+            'job_title'      => $job_title,
+            'applicant'      => $applicant,
+        ],
+        get_permalink($job_id)
+    );
+}, 10, 2);
+
+// ─── WP Job Manager: Job Published ───
+add_action('publish_job_listing', function ($post_id) {
+    $job = get_post($post_id);
+    if (!$job) return;
+
+    tinyeclipse_send_event('jobs', 'job_published',
+        "Vacature gepubliceerd: {$job->post_title}",
+        '',
+        ['job_id' => $post_id, 'job_title' => $job->post_title],
+        get_permalink($post_id)
+    );
+});
+
+// ─── Generic: Gravity Forms ───
+add_action('gform_after_submission', function ($entry, $form) {
+    $form_title = isset($form['title']) ? $form['title'] : 'Formulier';
+
+    tinyeclipse_send_event('forms', 'form_submitted',
+        "Formulier ingevuld: {$form_title}",
+        '',
+        [
+            'form_id'    => isset($form['id']) ? $form['id'] : null,
+            'form_title' => $form_title,
+            'entry_id'   => isset($entry['id']) ? $entry['id'] : null,
+        ]
+    );
+}, 10, 2);
 
 // ─── Uninstall: clean up all options ───
 // See uninstall.php

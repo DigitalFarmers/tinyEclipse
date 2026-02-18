@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, async_session
 from app.middleware.auth import verify_admin_key
-from app.models.tenant import Tenant, PlanType, TenantStatus
+from app.models.tenant import Tenant, PlanType, TenantStatus, TenantEnvironment
 from app.models.client_account import ClientAccount
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
 from app.models.conversation import Conversation
@@ -34,6 +34,7 @@ class TenantCreate(BaseModel):
     name: str
     plan: str = "tiny"
     domain: str | None = None
+    environment: str = "production"
     settings: dict = {}
     auto_scrape: bool = True
 
@@ -105,6 +106,7 @@ class TenantUpdate(BaseModel):
     plan: str | None = None
     status: str | None = None
     domain: str | None = None
+    environment: str | None = None
     settings: dict | None = None
 
 
@@ -115,6 +117,7 @@ class TenantResponse(BaseModel):
     plan: str
     status: str
     domain: str | None
+    environment: str = "production"
     settings: dict
     created_at: str
 
@@ -135,6 +138,7 @@ async def list_tenants(
             plan=t.plan.value,
             status=t.status.value,
             domain=t.domain,
+            environment=t.environment.value if hasattr(t, 'environment') and t.environment else "production",
             settings=t.settings,
             created_at=t.created_at.isoformat(),
         )
@@ -180,6 +184,7 @@ async def create_tenant(
         name=body.name,
         plan=PlanType(body.plan),
         domain=body.domain,
+        environment=TenantEnvironment(body.environment),
         settings=body.settings,
     )
     db.add(tenant)
@@ -199,6 +204,7 @@ async def create_tenant(
             plan=tenant.plan.value,
             status=tenant.status.value,
             domain=tenant.domain,
+            environment=tenant.environment.value,
             settings=tenant.settings,
             created_at=tenant.created_at.isoformat(),
         ).model_dump(),

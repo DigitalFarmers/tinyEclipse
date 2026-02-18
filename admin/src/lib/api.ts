@@ -37,6 +37,7 @@ export async function createTenant(data: {
   name: string;
   plan: string;
   domain?: string;
+  environment?: string;
   auto_scrape?: boolean;
 }) {
   return apiFetch("/api/admin/tenants/", {

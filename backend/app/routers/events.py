@@ -17,8 +17,24 @@ from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.monitor import Alert
 from app.models.visitor import VisitorSession, PageView, VisitorEvent, EventType
+from app.models.module_event import ModuleEvent, ModuleEventType
 
 logger = logging.getLogger(__name__)
+
+# Display metadata for module events
+_MODULE_EVENT_DISPLAY = {
+    "job_application": {"icon": "📋", "type": "lead"},
+    "job_published": {"icon": "📢", "type": "module"},
+    "order_placed": {"icon": "🛒", "type": "sale"},
+    "order_completed": {"icon": "✅", "type": "sale"},
+    "order_refunded": {"icon": "💸", "type": "sale"},
+    "giftcard_purchased": {"icon": "🎁", "type": "sale"},
+    "giftcard_redeemed": {"icon": "🎉", "type": "module"},
+    "form_submitted": {"icon": "📝", "type": "contact"},
+    "booking_created": {"icon": "📅", "type": "lead"},
+    "booking_cancelled": {"icon": "❌", "type": "module"},
+    "custom": {"icon": "⚡", "type": "module"},
+}
 
 router = APIRouter(prefix="/api/portal/events", tags=["portal-events"])
 
@@ -191,6 +207,43 @@ async def get_events_timeline(
                 })
         except Exception as e:
             logger.warning(f"Error fetching visitor events: {e}")
+
+    # ─── Module Events (jobs, shop, forms, giftcards, bookings) ───
+    if not event_type or event_type in ("module", "sale", "lead", "contact"):
+        try:
+            me_query = select(ModuleEvent).where(and_(
+                ModuleEvent.tenant_id == tid,
+                ModuleEvent.created_at >= since,
+            ))
+            # Filter by mapped event type if specified
+            if event_type:
+                matching_types = [k for k, v in _MODULE_EVENT_DISPLAY.items() if v["type"] == event_type]
+                if matching_types:
+                    me_query = me_query.where(ModuleEvent.event_type.in_(
+                        [ModuleEventType(t) for t in matching_types]
+                    ))
+            me_query = me_query.order_by(desc(ModuleEvent.created_at)).limit(limit)
+            module_events = await db.execute(me_query)
+
+            for me in module_events.scalars().all():
+                display = _MODULE_EVENT_DISPLAY.get(me.event_type.value, _MODULE_EVENT_DISPLAY["custom"])
+                events.append({
+                    "id": str(me.id),
+                    "type": display["type"],
+                    "icon": display["icon"],
+                    "title": me.title,
+                    "description": me.description or me.event_type.value,
+                    "metadata": {
+                        "module_type": me.module_type,
+                        "event_type": me.event_type.value,
+                        "data": me.data,
+                        "source_url": me.source_url,
+                    },
+                    "severity": me.severity,
+                    "timestamp": me.created_at.isoformat(),
+                })
+        except Exception as e:
+            logger.warning(f"Error fetching module events: {e}")
 
     # Sort all events by timestamp descending
     events.sort(key=lambda e: e["timestamp"], reverse=True)

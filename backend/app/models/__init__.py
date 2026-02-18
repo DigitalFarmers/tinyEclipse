@@ -9,6 +9,7 @@ from app.models.consent import Consent
 from app.models.usage_log import UsageLog
 from app.models.monitor import MonitorCheck, MonitorResult, Alert
 from app.models.visitor import VisitorSession, PageView, VisitorEvent
+from app.models.module_event import ModuleEvent
 
 __all__ = [
     "ClientAccount",
@@ -26,4 +27,5 @@ __all__ = [
     "VisitorSession",
     "PageView",
     "VisitorEvent",
+    "ModuleEvent",
 ]

@@ -31,6 +31,7 @@ interface TenantSummary {
   domain: string;
   plan: string;
   status: string;
+  environment?: string;
   whmcs_client_id: number;
   chats_24h: number;
   open_alerts: number;
@@ -186,11 +187,15 @@ export default function AdminSuperviewPage() {
 
       {/* Tenant Grid */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((t) => (
+        {filtered.map((t) => {
+          const isStaging = t.environment === "staging";
+          return (
           <div
             key={t.tenant_id}
             className={`rounded-xl border p-4 transition hover:border-white/10 ${
-              t.open_alerts > 0
+              isStaging
+                ? "border-yellow-500/10 bg-yellow-500/[0.02] opacity-70"
+                : t.open_alerts > 0
                 ? "border-red-500/20 bg-red-500/[0.02]"
                 : t.status === "active"
                 ? "border-white/5 bg-white/[0.02]"
@@ -199,7 +204,10 @@ export default function AdminSuperviewPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-sm font-bold">{t.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold">{t.name}</h3>
+                  {isStaging && <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-400">staging</span>}
+                </div>
                 <p className="text-[11px] text-white/30">{t.domain}</p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -257,7 +265,8 @@ export default function AdminSuperviewPage() {
               </a>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {filtered.length === 0 && (
