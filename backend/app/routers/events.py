@@ -16,7 +16,7 @@ from app.models.tenant import Tenant
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.monitor import Alert
-from app.models.visitor import VisitorSession, PageView, VisitorEvent
+from app.models.visitor import VisitorSession, PageView, VisitorEvent, EventType
 
 logger = logging.getLogger(__name__)
 
@@ -123,20 +123,20 @@ async def get_events_timeline(
     if not event_type or event_type == "visit":
         sessions = await db.execute(
             select(VisitorSession)
-            .where(and_(VisitorSession.tenant_id == tid, VisitorSession.started_at >= since))
-            .order_by(desc(VisitorSession.started_at))
+            .where(and_(VisitorSession.tenant_id == tid, VisitorSession.created_at >= since))
+            .order_by(desc(VisitorSession.created_at))
             .limit(min(limit, 30))  # Cap visits to avoid flooding
         )
         for s in sessions.scalars().all():
             # Count page views
             pv_count = await db.execute(
-                select(func.count(PageView.id)).where(PageView.session_id == s.id)
+                select(func.count(PageView.id)).where(PageView.session_id == s.session_id)
             )
             pages = pv_count.scalar() or 0
 
             duration = ""
-            if s.ended_at and s.started_at:
-                secs = (s.ended_at - s.started_at).total_seconds()
+            if s.ended_at and s.created_at:
+                secs = (s.ended_at - s.created_at).total_seconds()
                 if secs > 60:
                     duration = f"{int(secs // 60)}m {int(secs % 60)}s"
                 else:
@@ -155,38 +155,42 @@ async def get_events_timeline(
                     "device": s.device_type if hasattr(s, 'device_type') else None,
                 },
                 "severity": "info",
-                "timestamp": s.started_at.isoformat(),
+                "timestamp": s.created_at.isoformat(),
             })
 
     # ─── Visitor Events (contact forms, clicks, custom events) ───
     if not event_type or event_type in ("contact", "sale"):
-        visitor_events = await db.execute(
-            select(VisitorEvent)
-            .join(VisitorSession, VisitorEvent.session_id == VisitorSession.id)
-            .where(and_(
-                VisitorSession.tenant_id == tid,
-                VisitorEvent.created_at >= since,
-                or_(
-                    VisitorEvent.event_type.in_(["form_submit", "contact", "purchase", "sale", "lead_form"]),
-                )
-            ))
-            .order_by(desc(VisitorEvent.created_at))
-            .limit(limit)
-        )
-        for ve in visitor_events.scalars().all():
-            is_sale = ve.event_type in ("purchase", "sale")
-            is_contact = ve.event_type in ("form_submit", "contact", "lead_form")
+        try:
+            visitor_events = await db.execute(
+                select(VisitorEvent)
+                .where(and_(
+                    VisitorEvent.tenant_id == tid,
+                    VisitorEvent.created_at >= since,
+                    VisitorEvent.event_type.in_([
+                        EventType.form_submit,
+                        EventType.conversion,
+                        EventType.custom,
+                    ]),
+                ))
+                .order_by(desc(VisitorEvent.created_at))
+                .limit(limit)
+            )
+            for ve in visitor_events.scalars().all():
+                is_sale = ve.event_type == EventType.conversion
+                meta = ve.metadata_ if isinstance(ve.metadata_, dict) else {}
 
-            events.append({
-                "id": str(ve.id),
-                "type": "sale" if is_sale else "contact",
-                "icon": "💰" if is_sale else "📧",
-                "title": "Nieuwe verkoop!" if is_sale else "Contactformulier ingevuld",
-                "description": ve.event_data.get("description", ve.event_type) if isinstance(ve.event_data, dict) else str(ve.event_type),
-                "metadata": ve.event_data if isinstance(ve.event_data, dict) else {"raw": str(ve.event_data)},
-                "severity": "success" if is_sale else "info",
-                "timestamp": ve.created_at.isoformat(),
-            })
+                events.append({
+                    "id": str(ve.id),
+                    "type": "sale" if is_sale else "contact",
+                    "icon": "💰" if is_sale else "📧",
+                    "title": "Nieuwe verkoop!" if is_sale else "Contactformulier ingevuld",
+                    "description": meta.get("description", ve.event_type.value if hasattr(ve.event_type, 'value') else str(ve.event_type)),
+                    "metadata": meta,
+                    "severity": "success" if is_sale else "info",
+                    "timestamp": ve.created_at.isoformat(),
+                })
+        except Exception as e:
+            logger.warning(f"Error fetching visitor events: {e}")
 
     # Sort all events by timestamp descending
     events.sort(key=lambda e: e["timestamp"], reverse=True)
@@ -232,7 +236,7 @@ async def get_events_stats(
     # Visitor sessions last 24h
     visits_24h = await db.execute(
         select(func.count(VisitorSession.id))
-        .where(and_(VisitorSession.tenant_id == tid, VisitorSession.started_at >= since_24h))
+        .where(and_(VisitorSession.tenant_id == tid, VisitorSession.created_at >= since_24h))
     )
 
     # Alerts last 24h
