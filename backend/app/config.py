@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     rate_limit_per_day: int = 500
 
     # Confidence
-    confidence_escalate_threshold: float = 0.6
-    confidence_refuse_threshold: float = 0.3
+    confidence_escalate_threshold: float = 0.4
+    confidence_refuse_threshold: float = 0.15
 
     # WHMCS Integration
     whmcs_api_url: str = ""  # e.g. https://whmcs.digitalfarmers.be/includes/api.php

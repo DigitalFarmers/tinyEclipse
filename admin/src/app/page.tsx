@@ -59,9 +59,11 @@ export default function LandingPage() {
           </div>
 
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-            Jouw website verdient een{" "}
-            <span className="bg-gradient-to-r from-brand-400 via-purple-400 to-brand-400 bg-clip-text text-transparent">
-              slimme assistent
+            Jouw website verdient{" "}
+            <br className="hidden sm:block" />
+            een{" "}
+            <span className="bg-gradient-to-r from-brand-300 via-purple-300 to-pink-300 bg-clip-text text-transparent [-webkit-text-fill-color:transparent]">
+              slimme AI-assistent
             </span>
           </h1>
 
