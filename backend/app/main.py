@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.middleware.rate_limit import limiter
-from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles
+from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles, portal_account
 from app.routers.heartbeat import public_router as heartbeat_public, admin_router as heartbeat_admin
 from app.routers.sites import public_router as sites_public, admin_router as sites_admin
 
@@ -74,6 +74,7 @@ app.include_router(mail.router)
 app.include_router(module_events.router)
 app.include_router(portal_unified.router)
 app.include_router(client_profiles.router)
+app.include_router(portal_account.router)
 
 # Serve widget static files
 try:

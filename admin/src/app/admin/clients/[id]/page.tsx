@@ -26,6 +26,17 @@ import {
   ShieldCheck,
   Crown,
   Clock,
+  CreditCard,
+  Receipt,
+  Package,
+  User,
+  Building2,
+  Phone,
+  MapPin,
+  CheckCircle2,
+  AlertCircle,
+  Zap,
+  RotateCcw,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -70,24 +81,68 @@ interface ClientProfile {
   }>;
 }
 
+interface WHMCSData {
+  client: {
+    firstname: string; lastname: string; email: string; companyname: string;
+    address1: string; address2: string; city: string; postcode: string; country: string;
+    phonenumber: string; status: string; datecreated: string; currency_code: string;
+  } | null;
+  products: Array<{
+    id: number; pid: number; name: string; domain: string; status: string;
+    billingcycle: string; recurringamount: string; nextduedate: string; regdate: string;
+  }>;
+  invoices: Array<{
+    id: number; date: string; duedate: string; total: string; status: string;
+  }>;
+  domains: Array<{
+    id: number; domainname: string; status: string; expirydate: string; registrar: string;
+  }>;
+}
+
 export default function ClientDetailPage() {
   const params = useParams();
   const whmcsId = params.id as string;
   const [data, setData] = useState<ClientProfile | null>(null);
+  const [whmcs, setWhmcs] = useState<WHMCSData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rescraping, setRescraping] = useState<string | null>(null);
 
   useEffect(() => { loadData(); }, [whmcsId]);
 
   async function loadData() {
     setLoading(true);
+    const headers = { "X-Admin-Key": ADMIN_KEY };
     try {
-      const r = await fetch(`${API_URL}/api/admin/clients/${whmcsId}`, {
-        headers: { "X-Admin-Key": ADMIN_KEY },
-        cache: "no-store",
-      });
-      if (r.ok) setData(await r.json());
+      // Fetch Eclipse data + WHMCS data in parallel
+      const [eclipseRes, clientRes, productsRes, invoicesRes, domainsRes] = await Promise.all([
+        fetch(`${API_URL}/api/admin/clients/${whmcsId}`, { headers, cache: "no-store" }),
+        fetch(`${API_URL}/api/admin/whmcs/clients/${whmcsId}`, { headers, cache: "no-store" }).catch(() => null),
+        fetch(`${API_URL}/api/admin/whmcs/clients/${whmcsId}/products`, { headers, cache: "no-store" }).catch(() => null),
+        fetch(`${API_URL}/api/admin/whmcs/clients/${whmcsId}/invoices?status=`, { headers, cache: "no-store" }).catch(() => null),
+        fetch(`${API_URL}/api/admin/whmcs/clients/${whmcsId}/domains`, { headers, cache: "no-store" }).catch(() => null),
+      ]);
+
+      if (eclipseRes.ok) setData(await eclipseRes.json());
+
+      const whmcsData: WHMCSData = { client: null, products: [], invoices: [], domains: [] };
+      if (clientRes?.ok) whmcsData.client = await clientRes.json();
+      if (productsRes?.ok) { const d = await productsRes.json(); whmcsData.products = d.products || []; }
+      if (invoicesRes?.ok) { const d = await invoicesRes.json(); whmcsData.invoices = (d.invoices || []).slice(0, 10); }
+      if (domainsRes?.ok) { const d = await domainsRes.json(); whmcsData.domains = d.domains || []; }
+      setWhmcs(whmcsData);
     } catch {}
     setLoading(false);
+  }
+
+  async function triggerRescrape(tenantId: string) {
+    setRescraping(tenantId);
+    try {
+      await fetch(`${API_URL}/api/admin/tenants/${tenantId}/rescrape?clear_existing=true`, {
+        method: "POST",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+    } catch {}
+    setTimeout(() => setRescraping(null), 3000);
   }
 
   if (loading) {
@@ -111,9 +166,10 @@ export default function ClientDetailPage() {
 
   const a = data.account;
   const t = data.totals;
+  const c = whmcs?.client;
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -126,91 +182,232 @@ export default function ClientDetailPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">{a.name}</h1>
-              <div className="mt-0.5 flex items-center gap-3 text-sm text-white/40">
+              <div className="mt-0.5 flex flex-wrap items-center gap-3 text-sm text-white/40">
                 <span>WHMCS #{a.whmcs_client_id}</span>
-                {a.email && <span>· {a.email}</span>}
+                {(c?.email || a.email) && <span>· {c?.email || a.email}</span>}
+                {c?.status && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                    {c.status === "Active" ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                    {c.status}
+                  </span>
+                )}
               </div>
             </div>
           </div>
         </div>
         <button onClick={loadData} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/50 transition hover:bg-white/10">
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw className="h-3.5 w-3.5" /> Vernieuwen
         </button>
       </div>
 
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={Globe} label="Projecten" value={t.production} sub={t.staging > 0 ? `+${t.staging} staging` : undefined} color="brand" />
         <StatCard icon={MessageSquare} label="Chats 24u" value={t.chats_24h} sub={`${t.chats_7d} in 7d`} color="blue" />
         <StatCard icon={ShieldAlert} label="Open Alerts" value={t.open_alerts} color={t.open_alerts > 0 ? "red" : "green"} />
         <StatCard icon={Database} label="Kennisbronnen" value={t.total_sources} color="purple" />
       </div>
 
-      {/* Projects */}
-      <h2 className="mt-8 mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
-        <Globe className="h-4 w-4" /> Projecten
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {data.projects.map((p) => {
-          const isStaging = p.environment === "staging";
-          return (
-            <Link
-              key={p.tenant_id}
-              href={`/admin/tenants/${p.tenant_id}`}
-              className={`rounded-xl border p-4 transition hover:border-white/10 ${
-                isStaging
-                  ? "border-yellow-500/10 bg-yellow-500/[0.02] opacity-70"
-                  : "border-white/5 bg-white/[0.02]"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${p.status === "active" ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                    <Globe className={`h-4 w-4 ${p.status === "active" ? "text-green-400" : "text-red-400"}`} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold">{p.name}</h3>
-                      {isStaging && <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-400">staging</span>}
-                    </div>
-                    <p className="text-[11px] text-white/30">{p.domain}</p>
-                  </div>
-                </div>
-                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${PLAN_COLORS[p.plan] || PLAN_COLORS.tiny}`}>
-                  {p.plan.replace("_", "+")}
-                </span>
-              </div>
-
-              {/* Stats */}
-              <div className="mt-3 flex items-center gap-4 text-[10px] text-white/30">
-                <span className="flex items-center gap-1"><MessageSquare className="h-2.5 w-2.5" /> {p.stats.chats_24h} chats</span>
-                {p.stats.open_alerts > 0 && <span className="flex items-center gap-1 text-red-400"><ShieldAlert className="h-2.5 w-2.5" /> {p.stats.open_alerts}</span>}
-                <span className="flex items-center gap-1"><Database className="h-2.5 w-2.5" /> {p.stats.sources} bronnen</span>
-              </div>
-
-              {/* Modules */}
-              {p.modules.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {p.modules.map((m) => {
-                    const Icon = MODULE_ICONS[m.type] || Puzzle;
-                    const colors = MODULE_COLORS[m.type] || "text-white/30 bg-white/5";
-                    return (
-                      <span key={m.type} className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] ${colors}`}>
-                        <Icon className="h-2 w-2" /> {m.name}
-                      </span>
-                    );
-                  })}
-                </div>
+      {/* Two Column: WHMCS Client Info + Products */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* WHMCS Client Info */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <User className="h-4 w-4 text-brand-400" /> WHMCS Klantgegevens
+          </h3>
+          {c ? (
+            <div className="space-y-3 text-sm">
+              <InfoRow icon={User} label="Naam" value={`${c.firstname} ${c.lastname}`} />
+              {c.companyname && <InfoRow icon={Building2} label="Bedrijf" value={c.companyname} />}
+              <InfoRow icon={Mail} label="E-mail" value={c.email} />
+              {c.phonenumber && <InfoRow icon={Phone} label="Telefoon" value={c.phonenumber} />}
+              {c.address1 && (
+                <InfoRow icon={MapPin} label="Adres" value={[c.address1, c.address2, `${c.postcode} ${c.city}`, c.country].filter(Boolean).join(", ")} />
               )}
-            </Link>
-          );
-        })}
+              {c.datecreated && <InfoRow icon={Clock} label="Klant sinds" value={c.datecreated} />}
+              {c.currency_code && <InfoRow icon={CreditCard} label="Valuta" value={c.currency_code} />}
+            </div>
+          ) : (
+            <p className="text-sm text-white/30">WHMCS niet beschikbaar of niet geconfigureerd</p>
+          )}
+        </div>
+
+        {/* WHMCS Products */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <Package className="h-4 w-4 text-purple-400" /> WHMCS Producten & Services
+          </h3>
+          {whmcs && whmcs.products.length > 0 ? (
+            <div className="space-y-3">
+              {whmcs.products.map((p) => (
+                <div key={p.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{p.name}</p>
+                      {p.domain && <p className="text-xs text-white/40">{p.domain}</p>}
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${p.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                      {p.status}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-white/30">
+                    {p.billingcycle && <span>{p.billingcycle}</span>}
+                    {p.recurringamount && <span>€{p.recurringamount}</span>}
+                    {p.nextduedate && <span>Volgende: {p.nextduedate}</span>}
+                    {p.regdate && <span>Sinds: {p.regdate}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-white/30">Geen producten gevonden</p>
+          )}
+        </div>
+      </div>
+
+      {/* Projects */}
+      <div>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
+          <Globe className="h-4 w-4" /> Eclipse Projecten
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {data.projects.map((p) => {
+            const isStaging = p.environment === "staging";
+            return (
+              <div
+                key={p.tenant_id}
+                className={`rounded-xl border p-4 transition ${
+                  isStaging
+                    ? "border-yellow-500/10 bg-yellow-500/[0.02] opacity-70"
+                    : "border-white/5 bg-white/[0.02]"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <Link href={`/admin/tenants/${p.tenant_id}`} className="flex items-center gap-3 hover:opacity-80">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${p.status === "active" ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                      <Globe className={`h-4 w-4 ${p.status === "active" ? "text-green-400" : "text-red-400"}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold">{p.name}</h3>
+                        {isStaging && <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-400">staging</span>}
+                      </div>
+                      <p className="text-[11px] text-white/30">{p.domain}</p>
+                    </div>
+                  </Link>
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${PLAN_COLORS[p.plan] || PLAN_COLORS.tiny}`}>
+                      {p.plan.replace("_", "+")}
+                    </span>
+                    {!isStaging && p.domain && (
+                      <button
+                        onClick={() => triggerRescrape(p.tenant_id)}
+                        disabled={rescraping === p.tenant_id}
+                        className="rounded-lg bg-purple-500/10 p-1.5 text-purple-400 transition hover:bg-purple-500/20 disabled:opacity-50"
+                        title="Deep Re-scrape"
+                      >
+                        {rescraping === p.tenant_id ? (
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="mt-3 flex items-center gap-4 text-[10px] text-white/30">
+                  <span className="flex items-center gap-1"><MessageSquare className="h-2.5 w-2.5" /> {p.stats.chats_24h} chats</span>
+                  {p.stats.open_alerts > 0 && <span className="flex items-center gap-1 text-red-400"><ShieldAlert className="h-2.5 w-2.5" /> {p.stats.open_alerts}</span>}
+                  <span className="flex items-center gap-1"><Database className="h-2.5 w-2.5" /> {p.stats.sources} bronnen</span>
+                </div>
+
+                {/* Modules */}
+                {p.modules.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {p.modules.map((m) => {
+                      const Icon = MODULE_ICONS[m.type] || Puzzle;
+                      const colors = MODULE_COLORS[m.type] || "text-white/30 bg-white/5";
+                      return (
+                        <span key={m.type} className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] ${colors}`}>
+                          <Icon className="h-2 w-2" /> {m.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {rescraping === p.tenant_id && (
+                  <p className="mt-2 text-[10px] text-purple-400">Deep scrape gestart — WordPress REST API + WooCommerce + Knowledge Points...</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Two Column: Invoices + Domains */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Invoices */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <Receipt className="h-4 w-4 text-green-400" /> WHMCS Facturen
+          </h3>
+          {whmcs && whmcs.invoices.length > 0 ? (
+            <div className="space-y-2">
+              {whmcs.invoices.map((inv) => (
+                <div key={inv.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+                  <div>
+                    <p className="text-xs font-medium">#{inv.id}</p>
+                    <p className="text-[10px] text-white/30">{inv.date}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold">€{inv.total}</p>
+                    <span className={`text-[10px] font-semibold ${inv.status === "Paid" ? "text-green-400" : inv.status === "Unpaid" ? "text-red-400" : "text-yellow-400"}`}>
+                      {inv.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-white/30">Geen facturen</p>
+          )}
+        </div>
+
+        {/* Domains */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <Globe className="h-4 w-4 text-blue-400" /> WHMCS Domeinen
+          </h3>
+          {whmcs && whmcs.domains.length > 0 ? (
+            <div className="space-y-2">
+              {whmcs.domains.map((d) => (
+                <div key={d.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+                  <div>
+                    <p className="text-xs font-medium">{d.domainname}</p>
+                    <p className="text-[10px] text-white/30">{d.registrar}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-[10px] font-semibold ${d.status === "Active" ? "text-green-400" : "text-yellow-400"}`}>
+                      {d.status}
+                    </span>
+                    {d.expirydate && <p className="text-[10px] text-white/30">Verloopt: {d.expirydate}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-white/30">Geen domeinen</p>
+          )}
+        </div>
       </div>
 
       {/* Recent Events */}
       {data.recent_events.length > 0 && (
-        <>
-          <h2 className="mt-8 mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
+        <div>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
             <Activity className="h-4 w-4" /> Recente Events (7d)
           </h2>
           <div className="space-y-1.5">
@@ -234,24 +431,34 @@ export default function ClientDetailPage() {
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
       {/* Quick Actions */}
-      <h2 className="mt-8 mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
-        Acties
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        {data.projects.filter(p => p.environment === "production").map((p) => (
+      <div>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-white/25">
+          <Zap className="h-4 w-4" /> Acties
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {data.projects.filter(p => p.environment === "production").map((p) => (
+            <a
+              key={`portal-${p.tenant_id}`}
+              href={`/portal?sso=${p.tenant_id}`}
+              target="_blank"
+              className="flex items-center gap-2 rounded-lg bg-brand-500/10 px-3 py-2 text-[11px] text-brand-400 transition hover:bg-brand-500/20"
+            >
+              Portal: {p.domain} <ArrowUpRight className="h-3 w-3" />
+            </a>
+          ))}
           <a
-            key={p.tenant_id}
-            href={`/portal?sso=${p.tenant_id}`}
+            href={`https://my.digitalfarmers.be/admin/clientssummary.php?userid=${whmcsId}`}
             target="_blank"
-            className="flex items-center gap-2 rounded-lg bg-brand-500/10 px-3 py-2 text-[11px] text-brand-400 transition hover:bg-brand-500/20"
+            rel="noopener"
+            className="flex items-center gap-2 rounded-lg bg-purple-500/10 px-3 py-2 text-[11px] text-purple-400 transition hover:bg-purple-500/20"
           >
-            Portal: {p.domain} <ArrowUpRight className="h-3 w-3" />
+            WHMCS Admin <ArrowUpRight className="h-3 w-3" />
           </a>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -275,6 +482,19 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
       </div>
       <p className="mt-2 text-2xl font-bold">{value}</p>
       {sub && <p className="mt-0.5 text-[10px] text-white/30">{sub}</p>}
+    </div>
+  );
+}
+
+function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3">
+      <Icon className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-white/20" />
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-white/25">{label}</p>
+        <p className="text-sm text-white/70">{value}</p>
+      </div>
     </div>
   );
 }

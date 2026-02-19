@@ -1,6 +1,6 @@
 // TinyEclipse Service Worker — PWA + Push Notifications
-const CACHE_NAME = "tinyeclipse-v2";
-const STATIC_ASSETS = ["/portal", "/portal/events", "/portal/ai", "/portal/monitoring", "/portal/modules", "/portal/conversations"];
+const CACHE_NAME = "tinyeclipse-v3";
+const STATIC_ASSETS = ["/portal", "/portal/events", "/portal/ai", "/portal/monitoring", "/portal/modules", "/portal/conversations", "/portal/account"];
 
 // Install — cache shell
 self.addEventListener("install", (e) => {
