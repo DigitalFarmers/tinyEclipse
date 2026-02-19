@@ -23,5 +23,25 @@
   ],
   "categories": ["business", "productivity"],
   "lang": "nl",
-  "dir": "ltr"
+  "dir": "ltr",
+  "shortcuts": [
+    {
+      "name": "Activiteit",
+      "short_name": "Events",
+      "url": "/portal/events",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Monitoring",
+      "short_name": "Monitor",
+      "url": "/portal/monitoring",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "AI Assistent",
+      "short_name": "AI",
+      "url": "/portal/ai",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

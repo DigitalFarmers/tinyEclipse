@@ -92,6 +92,7 @@ function Sidebar() {
       title: "Command Center",
       items: [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/admin/clients", label: "Klanten", icon: Users },
         { href: "/admin/tenants", label: "Websites", icon: Building2 },
         { href: "/admin/monitoring", label: "Monitoring", icon: Shield },
         { href: "/admin/superview", label: "Superview", icon: Eye },
