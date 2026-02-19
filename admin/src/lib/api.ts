@@ -350,3 +350,41 @@ export async function pushTenantIdsToWhmcs() {
 export async function getWhmcsPortalData(clientId: number) {
   return apiFetch(`/api/admin/whmcs/portal/${clientId}`);
 }
+
+// ─── WordPress Proxy ───
+
+export async function getWpCapabilities(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/capabilities`);
+}
+
+export async function getWpmlLanguages(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/wpml/languages`);
+}
+
+export async function getWpmlStatus(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/wpml/status`);
+}
+
+export async function getWpForms(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/forms`);
+}
+
+export async function getWpFormSubmissions(tenantId: string, formId: number, limit = 50) {
+  return apiFetch(`/api/admin/wp/${tenantId}/forms/${formId}/submissions?limit=${limit}`);
+}
+
+export async function getWpProducts(tenantId: string, limit = 100) {
+  return apiFetch(`/api/admin/wp/${tenantId}/shop/products?limit=${limit}`);
+}
+
+export async function getWpOrders(tenantId: string, limit = 50, status = "any") {
+  return apiFetch(`/api/admin/wp/${tenantId}/shop/orders?limit=${limit}&status=${status}`);
+}
+
+export async function getWpShopStats(tenantId: string, days = 30) {
+  return apiFetch(`/api/admin/wp/${tenantId}/shop/stats?days=${days}`);
+}
+
+export async function getWpMailStatus(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/mail/status`);
+}

@@ -552,5 +552,445 @@ add_action('gform_after_submission', function ($entry, $form) {
     );
 }, 10, 2);
 
+// ═══════════════════════════════════════════════════════════════
+// ECLIPSE REST API v3 — Remote management endpoints for Hub
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Verify Eclipse Hub request via tenant_id match.
+ */
+function tinyeclipse_verify_request($request) {
+    $tenant = $request->get_header('X-Tenant-Id');
+    $stored = get_option('tinyeclipse_tenant_id', '');
+    if (empty($stored) || $tenant !== $stored) {
+        return new WP_Error('unauthorized', 'Invalid tenant', ['status' => 403]);
+    }
+    return true;
+}
+
+add_action('rest_api_init', function () {
+
+    // ─── WPML: Get languages ───
+    register_rest_route('tinyeclipse/v1', '/wpml/languages', [
+        'methods' => 'GET',
+        'callback' => function () {
+            if (!function_exists('icl_get_languages')) {
+                return new WP_REST_Response(['active' => false, 'message' => 'WPML not installed'], 200);
+            }
+            $langs = icl_get_languages('skip_missing=0');
+            $default = apply_filters('wpml_default_language', null);
+            return new WP_REST_Response([
+                'active' => true,
+                'default_language' => $default,
+                'languages' => array_map(function ($l) {
+                    return [
+                        'code' => $l['code'],
+                        'name' => $l['native_name'],
+                        'english_name' => $l['translated_name'],
+                        'active' => (bool)$l['active'],
+                        'url' => $l['url'],
+                        'missing' => (int)($l['missing'] ?? 0),
+                    ];
+                }, array_values($langs)),
+                'total' => count($langs),
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── WPML: Get translation status for pages ───
+    register_rest_route('tinyeclipse/v1', '/wpml/status', [
+        'methods' => 'GET',
+        'callback' => function () {
+            if (!function_exists('icl_get_languages')) {
+                return new WP_REST_Response(['active' => false], 200);
+            }
+            global $wpdb;
+            $default_lang = apply_filters('wpml_default_language', null);
+            $langs = icl_get_languages('skip_missing=0');
+
+            // Get all published pages/posts in default language
+            $pages = get_posts([
+                'post_type' => ['page', 'post'],
+                'post_status' => 'publish',
+                'numberposts' => 200,
+                'suppress_filters' => false,
+            ]);
+
+            $items = [];
+            foreach ($pages as $page) {
+                $trid = apply_filters('wpml_element_trid', null, $page->ID, 'post_' . $page->post_type);
+                $translations = apply_filters('wpml_get_element_translations', null, $trid, 'post_' . $page->post_type);
+                $trans_status = [];
+                if ($translations) {
+                    foreach ($translations as $lang_code => $t) {
+                        $trans_status[$lang_code] = [
+                            'exists' => !empty($t->element_id),
+                            'post_id' => $t->element_id ?? null,
+                            'status' => !empty($t->element_id) ? get_post_status($t->element_id) : 'missing',
+                        ];
+                    }
+                }
+                $items[] = [
+                    'id' => $page->ID,
+                    'title' => $page->post_title,
+                    'type' => $page->post_type,
+                    'url' => get_permalink($page->ID),
+                    'translations' => $trans_status,
+                ];
+            }
+
+            return new WP_REST_Response([
+                'active' => true,
+                'default_language' => $default_lang,
+                'language_count' => count($langs),
+                'page_count' => count($items),
+                'pages' => $items,
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Fluent Forms: List forms ───
+    register_rest_route('tinyeclipse/v1', '/forms', [
+        'methods' => 'GET',
+        'callback' => function () {
+            if (!function_exists('wpFluent')) {
+                return new WP_REST_Response(['active' => false, 'message' => 'Fluent Forms not installed', 'forms' => []], 200);
+            }
+            global $wpdb;
+            $table = $wpdb->prefix . 'fluentform_forms';
+            $forms = $wpdb->get_results("SELECT id, title, status, created_at, updated_at FROM {$table} ORDER BY id DESC LIMIT 100");
+
+            $result = [];
+            foreach ($forms as $form) {
+                $sub_table = $wpdb->prefix . 'fluentform_submissions';
+                $count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$sub_table} WHERE form_id = %d", $form->id));
+                $recent = $wpdb->get_var($wpdb->prepare("SELECT created_at FROM {$sub_table} WHERE form_id = %d ORDER BY id DESC LIMIT 1", $form->id));
+
+                $result[] = [
+                    'id' => (int)$form->id,
+                    'title' => $form->title,
+                    'status' => $form->status,
+                    'submissions' => (int)$count,
+                    'last_submission' => $recent,
+                    'created_at' => $form->created_at,
+                ];
+            }
+
+            return new WP_REST_Response([
+                'active' => true,
+                'total' => count($result),
+                'forms' => $result,
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Fluent Forms: Get submissions for a form ───
+    register_rest_route('tinyeclipse/v1', '/forms/(?P<form_id>\d+)/submissions', [
+        'methods' => 'GET',
+        'callback' => function ($request) {
+            if (!function_exists('wpFluent')) {
+                return new WP_REST_Response(['active' => false], 200);
+            }
+            global $wpdb;
+            $form_id = (int)$request['form_id'];
+            $limit = min((int)($request->get_param('limit') ?: 50), 200);
+            $table = $wpdb->prefix . 'fluentform_submissions';
+
+            $subs = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, serial_number, response, status, created_at FROM {$table} WHERE form_id = %d ORDER BY id DESC LIMIT %d",
+                $form_id, $limit
+            ));
+
+            $result = [];
+            foreach ($subs as $sub) {
+                $response = json_decode($sub->response, true) ?: [];
+                $result[] = [
+                    'id' => (int)$sub->id,
+                    'serial' => $sub->serial_number,
+                    'status' => $sub->status,
+                    'fields' => $response,
+                    'created_at' => $sub->created_at,
+                ];
+            }
+
+            return new WP_REST_Response([
+                'form_id' => $form_id,
+                'total' => count($result),
+                'submissions' => $result,
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── WooCommerce: Products overview ───
+    register_rest_route('tinyeclipse/v1', '/shop/products', [
+        'methods' => 'GET',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['active' => false, 'message' => 'WooCommerce not installed'], 200);
+            }
+            $limit = min((int)($request->get_param('limit') ?: 100), 200);
+            $products = wc_get_products([
+                'limit' => $limit,
+                'status' => 'publish',
+                'orderby' => 'date',
+                'order' => 'DESC',
+            ]);
+
+            $result = [];
+            foreach ($products as $p) {
+                $result[] = [
+                    'id' => $p->get_id(),
+                    'name' => $p->get_name(),
+                    'slug' => $p->get_slug(),
+                    'type' => $p->get_type(),
+                    'status' => $p->get_status(),
+                    'price' => $p->get_price(),
+                    'regular_price' => $p->get_regular_price(),
+                    'sale_price' => $p->get_sale_price(),
+                    'stock_status' => $p->get_stock_status(),
+                    'stock_quantity' => $p->get_stock_quantity(),
+                    'total_sales' => $p->get_total_sales(),
+                    'categories' => wp_list_pluck($p->get_category_ids() ? get_terms(['taxonomy' => 'product_cat', 'include' => $p->get_category_ids()]) : [], 'name'),
+                    'image' => wp_get_attachment_url($p->get_image_id()) ?: null,
+                    'url' => $p->get_permalink(),
+                    'created_at' => $p->get_date_created() ? $p->get_date_created()->format('c') : null,
+                ];
+            }
+
+            return new WP_REST_Response([
+                'active' => true,
+                'total' => count($result),
+                'products' => $result,
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── WooCommerce: Orders overview ───
+    register_rest_route('tinyeclipse/v1', '/shop/orders', [
+        'methods' => 'GET',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['active' => false], 200);
+            }
+            $limit = min((int)($request->get_param('limit') ?: 50), 200);
+            $status = $request->get_param('status') ?: 'any';
+
+            $orders = wc_get_orders([
+                'limit' => $limit,
+                'status' => $status,
+                'orderby' => 'date',
+                'order' => 'DESC',
+            ]);
+
+            $result = [];
+            foreach ($orders as $o) {
+                $items = [];
+                foreach ($o->get_items() as $item) {
+                    $items[] = [
+                        'name' => $item->get_name(),
+                        'quantity' => $item->get_quantity(),
+                        'total' => $item->get_total(),
+                    ];
+                }
+                $result[] = [
+                    'id' => $o->get_id(),
+                    'status' => $o->get_status(),
+                    'total' => $o->get_total(),
+                    'currency' => $o->get_currency(),
+                    'items_count' => $o->get_item_count(),
+                    'items' => $items,
+                    'customer' => $o->get_billing_first_name() . ' ' . $o->get_billing_last_name(),
+                    'email' => $o->get_billing_email(),
+                    'payment_method' => $o->get_payment_method_title(),
+                    'created_at' => $o->get_date_created() ? $o->get_date_created()->format('c') : null,
+                ];
+            }
+
+            return new WP_REST_Response([
+                'active' => true,
+                'total' => count($result),
+                'orders' => $result,
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── WooCommerce: Shop stats ───
+    register_rest_route('tinyeclipse/v1', '/shop/stats', [
+        'methods' => 'GET',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['active' => false], 200);
+            }
+            global $wpdb;
+            $days = min((int)($request->get_param('days') ?: 30), 365);
+            $since = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+            // Revenue
+            $revenue = $wpdb->get_var($wpdb->prepare(
+                "SELECT SUM(meta_value) FROM {$wpdb->postmeta} pm
+                 JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                 WHERE pm.meta_key = '_order_total'
+                 AND p.post_type = 'shop_order'
+                 AND p.post_status IN ('wc-completed','wc-processing')
+                 AND p.post_date >= %s", $since
+            ));
+
+            // Order count
+            $order_count = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts}
+                 WHERE post_type = 'shop_order'
+                 AND post_status IN ('wc-completed','wc-processing')
+                 AND post_date >= %s", $since
+            ));
+
+            // Product count
+            $product_count = $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish'"
+            );
+
+            // Top products by sales
+            $top_products = $wpdb->get_results($wpdb->prepare(
+                "SELECT pm.meta_value as product_id, p2.post_title as name,
+                        SUM(oim.meta_value) as quantity, COUNT(DISTINCT oi.order_id) as orders
+                 FROM {$wpdb->prefix}woocommerce_order_items oi
+                 JOIN {$wpdb->prefix}woocommerce_order_itemmeta oim ON oim.order_item_id = oi.order_item_id AND oim.meta_key = '_qty'
+                 JOIN {$wpdb->prefix}woocommerce_order_itemmeta pm ON pm.order_item_id = oi.order_item_id AND pm.meta_key = '_product_id'
+                 JOIN {$wpdb->posts} p ON p.ID = oi.order_id AND p.post_status IN ('wc-completed','wc-processing') AND p.post_date >= %s
+                 JOIN {$wpdb->posts} p2 ON p2.ID = pm.meta_value
+                 WHERE oi.order_item_type = 'line_item'
+                 GROUP BY pm.meta_value ORDER BY quantity DESC LIMIT 10", $since
+            ));
+
+            // Orders by status
+            $by_status = $wpdb->get_results(
+                "SELECT post_status as status, COUNT(*) as count FROM {$wpdb->posts}
+                 WHERE post_type = 'shop_order' GROUP BY post_status"
+            );
+
+            return new WP_REST_Response([
+                'active' => true,
+                'period_days' => $days,
+                'revenue' => round((float)$revenue, 2),
+                'order_count' => (int)$order_count,
+                'product_count' => (int)$product_count,
+                'avg_order_value' => $order_count > 0 ? round((float)$revenue / $order_count, 2) : 0,
+                'top_products' => array_map(function ($p) {
+                    return [
+                        'id' => (int)$p->product_id,
+                        'name' => $p->name,
+                        'quantity' => (int)$p->quantity,
+                        'orders' => (int)$p->orders,
+                    ];
+                }, $top_products ?: []),
+                'by_status' => array_reduce($by_status ?: [], function ($carry, $s) {
+                    $carry[str_replace('wc-', '', $s->status)] = (int)$s->count;
+                    return $carry;
+                }, []),
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Mail/SMTP status ───
+    register_rest_route('tinyeclipse/v1', '/mail/status', [
+        'methods' => 'GET',
+        'callback' => function () {
+            $smtp_plugins = [
+                'wp-mail-smtp/wp_mail_smtp.php' => 'WP Mail SMTP',
+                'fluent-smtp/fluent-smtp.php' => 'FluentSMTP',
+                'post-smtp/postman-smtp.php' => 'Post SMTP',
+                'easy-wp-smtp/easy-wp-smtp.php' => 'Easy WP SMTP',
+            ];
+
+            $active_smtp = null;
+            $active_plugins = get_option('active_plugins', []);
+            foreach ($smtp_plugins as $file => $name) {
+                if (in_array($file, $active_plugins)) {
+                    $active_smtp = $name;
+                    break;
+                }
+            }
+
+            // Check FluentSMTP settings if available
+            $smtp_config = [];
+            if ($active_smtp === 'FluentSMTP') {
+                $settings = get_option('fluentmail-settings', []);
+                if (!empty($settings['connections'])) {
+                    foreach ($settings['connections'] as $key => $conn) {
+                        $smtp_config[] = [
+                            'sender' => $key,
+                            'provider' => $conn['provider_settings']['provider'] ?? 'unknown',
+                            'from_email' => $conn['provider_settings']['sender_email'] ?? '',
+                        ];
+                    }
+                }
+            }
+
+            // Get admin email
+            $admin_email = get_option('admin_email', '');
+            $woo_email = '';
+            if (class_exists('WooCommerce')) {
+                $woo_email = get_option('woocommerce_email_from_address', $admin_email);
+            }
+
+            return new WP_REST_Response([
+                'smtp_active' => !empty($active_smtp),
+                'smtp_plugin' => $active_smtp,
+                'smtp_connections' => $smtp_config,
+                'admin_email' => $admin_email,
+                'woo_email' => $woo_email,
+                'site_name' => get_bloginfo('name'),
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Site overview: all capabilities ───
+    register_rest_route('tinyeclipse/v1', '/capabilities', [
+        'methods' => 'GET',
+        'callback' => function () {
+            $active_plugins = get_option('active_plugins', []);
+            $has = function ($slug) use ($active_plugins) {
+                foreach ($active_plugins as $p) {
+                    if (strpos($p, $slug) !== false) return true;
+                }
+                return false;
+            };
+
+            return new WP_REST_Response([
+                'wordpress' => true,
+                'version' => get_bloginfo('version'),
+                'php' => phpversion(),
+                'woocommerce' => class_exists('WooCommerce'),
+                'woo_version' => defined('WC_VERSION') ? WC_VERSION : null,
+                'wpml' => function_exists('icl_get_languages'),
+                'fluent_forms' => function_exists('wpFluent') || $has('fluentform'),
+                'fluent_smtp' => $has('fluent-smtp'),
+                'wp_mail_smtp' => $has('wp-mail-smtp'),
+                'contact_form_7' => $has('contact-form-7'),
+                'gravity_forms' => $has('gravityforms'),
+                'job_manager' => $has('wp-job-manager'),
+                'amelia_booking' => $has('ameliabooking'),
+                'elementor' => $has('elementor'),
+                'yoast' => $has('wordpress-seo'),
+                'theme' => get_stylesheet(),
+                'multisite' => is_multisite(),
+                'locale' => get_locale(),
+                'timezone' => wp_timezone_string(),
+                'site_url' => get_site_url(),
+                'home_url' => get_home_url(),
+                'plugin_count' => count($active_plugins),
+            ], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+});
+
 // ─── Uninstall: clean up all options ───
 // See uninstall.php
