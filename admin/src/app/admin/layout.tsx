@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   ShoppingCart,
+  UserPlus,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { getTenants, getAlerts, getOverview } from "@/lib/api";
@@ -145,6 +146,7 @@ function Sidebar({ open, onClose, alertCount, chatCount, apiOk }: { open: boolea
         { href: "/admin/insights", label: "AI Insights", icon: Brain, badge: 0 },
         { href: "/admin/analytics", label: "Visitor Analytics", icon: Users, badge: 0 },
         { href: "/admin/conversations", label: "Conversations", icon: MessageSquare, badge: chatCount },
+        { href: "/admin/leads", label: "Leads", icon: UserPlus, badge: 0 },
         { href: "/admin/sources", label: "Knowledge Base", icon: Database, badge: 0 },
       ],
     },

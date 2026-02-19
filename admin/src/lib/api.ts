@@ -68,7 +68,7 @@ export async function getConversation(id: string) {
 }
 
 export async function getSources(tenantId: string) {
-  return apiFetch(`/api/admin/sources?tenant_id=${tenantId}`);
+  return apiFetch(`/api/admin/sources/?tenant_id=${tenantId}`);
 }
 
 export async function createSource(data: {
@@ -97,7 +97,7 @@ export async function scrapeSite(tenantId: string, url: string) {
 
 export async function getUsage(tenantId?: string) {
   const params = tenantId ? `?tenant_id=${tenantId}` : "";
-  return apiFetch(`/api/admin/usage${params}`);
+  return apiFetch(`/api/admin/usage/${params}`);
 }
 
 // ─── Monitoring ───
@@ -387,4 +387,17 @@ export async function getWpShopStats(tenantId: string, days = 30) {
 
 export async function getWpMailStatus(tenantId: string) {
   return apiFetch(`/api/admin/wp/${tenantId}/mail/status`);
+}
+
+// ─── Leads ───
+
+export async function getLeads(tenantId?: string, days = 30, limit = 100) {
+  const params = new URLSearchParams({ days: String(days), limit: String(limit) });
+  if (tenantId) params.set("tenant_id", tenantId);
+  return apiFetch(`/api/admin/leads/?${params}`);
+}
+
+export async function getLeadStats(tenantId?: string) {
+  const params = tenantId ? `?tenant_id=${tenantId}` : "";
+  return apiFetch(`/api/admin/leads/stats${params}`);
 }

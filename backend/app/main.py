@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.middleware.rate_limit import limiter
-from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles, portal_account, portal_conversations, wp_proxy
+from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles, portal_account, portal_conversations, wp_proxy, leads
 from app.routers.insights import admin_router as insights_admin, portal_router as insights_portal
 from app.routers.heartbeat import public_router as heartbeat_public, admin_router as heartbeat_admin
 from app.routers.sites import public_router as sites_public, admin_router as sites_admin
@@ -78,6 +78,8 @@ app.include_router(client_profiles.router)
 app.include_router(portal_account.router)
 app.include_router(portal_conversations.router)
 app.include_router(wp_proxy.router)
+app.include_router(leads.public_router)
+app.include_router(leads.admin_router)
 app.include_router(insights_admin)
 app.include_router(insights_portal)
 
