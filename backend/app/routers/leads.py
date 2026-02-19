@@ -12,6 +12,7 @@ from app.database import get_db
 from app.middleware.auth import verify_admin_key
 from app.models.lead import Lead, LeadSource
 from app.models.tenant import Tenant
+from app.services.contact_matcher import find_or_create_contact, increment_contact_stat
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,18 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)):
         except ValueError:
             pass
 
+    # Match or create unified contact
+    contact_id = None
+    try:
+        if body.email or body.phone or body.name:
+            contact = await find_or_create_contact(
+                db, tid, email=body.email, phone=body.phone, name=body.name, source="lead"
+            )
+            contact_id = contact.id
+            await increment_contact_stat(db, contact.id, "total_leads")
+    except Exception as e:
+        logger.warning(f"[lead] Contact matching failed: {e}")
+
     lead = Lead(
         tenant_id=tid,
         session_id=body.session_id,
@@ -78,13 +91,14 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)):
         message=body.message,
         source=source,
         page_url=body.page_url,
+        contact_id=contact_id,
     )
     db.add(lead)
     await db.commit()
     await db.refresh(lead)
 
-    logger.info(f"[lead] New lead for {tenant.name}: {body.email or body.name or body.phone}")
-    return {"status": "captured", "lead_id": str(lead.id)}
+    logger.info(f"[lead] New lead for {tenant.name}: {body.email or body.name or body.phone} (contact: {contact_id})")
+    return {"status": "captured", "lead_id": str(lead.id), "contact_id": str(contact_id) if contact_id else None}
 
 
 # ─── Admin: list leads ───

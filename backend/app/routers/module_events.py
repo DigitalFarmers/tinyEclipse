@@ -22,6 +22,7 @@ from app.database import get_db
 from app.models.tenant import Tenant
 from app.models.module_event import ModuleEvent, ModuleEventType
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
+from app.services.contact_matcher import find_or_create_contact, increment_contact_stat
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,26 @@ async def report_module_event(
         module.stats = stats
 
     await db.flush()
+
+    # Auto-match/create unified contact for orders and form submissions
+    try:
+        ev_email = body.data.get("email")
+        ev_name = body.data.get("customer") or body.data.get("name") or body.data.get("applicant")
+        ev_phone = body.data.get("phone")
+        if ev_email or ev_name or ev_phone:
+            contact = await find_or_create_contact(
+                db, tid, email=ev_email, phone=ev_phone, name=ev_name, source=body.event_type,
+            )
+            if body.event_type in ("order_placed", "order_completed"):
+                await increment_contact_stat(db, contact.id, "total_orders")
+                total = body.data.get("total")
+                if total:
+                    await increment_contact_stat(db, contact.id, "total_spent", float(total))
+            elif body.event_type == "form_submitted":
+                await increment_contact_stat(db, contact.id, "total_form_submissions")
+            await db.flush()
+    except Exception as e:
+        logger.warning(f"[module-event] Contact matching failed: {e}")
 
     logger.info(f"[module-event] {body.module_type}/{body.event_type} for tenant {tenant_id}: {body.title}")
 

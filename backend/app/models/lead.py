@@ -30,6 +30,7 @@ class Lead(Base):
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[LeadSource] = mapped_column(Enum(LeadSource), nullable=False, default=LeadSource.chat)
     page_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant")

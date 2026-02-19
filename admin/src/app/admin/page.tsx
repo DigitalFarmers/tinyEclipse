@@ -27,7 +27,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { getTenants, getMonitoringDashboard, getAnalytics, getOverview, getConversations, getSources } from "@/lib/api";
+import { getTenants, getMonitoringDashboard, getAnalytics, getOverview, getConversations, getSources, getWpCapabilities, getContactStats, getLeadStats, getModuleEvents } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -73,6 +73,10 @@ export default function DashboardPage() {
   const [monitorMap, setMonitorMap] = useState<Record<string, MonitorData>>({});
   const [analyticsMap, setAnalyticsMap] = useState<Record<string, AnalyticsData>>({});
   const [sourcesMap, setSourcesMap] = useState<Record<string, number>>({});
+  const [capsMap, setCapsMap] = useState<Record<string, any>>({});
+  const [modulesMap, setModulesMap] = useState<Record<string, any[]>>({});
+  const [contactStats, setContactStats] = useState<any>(null);
+  const [leadStats, setLeadStats] = useState<any>(null);
   const [overview, setOverview] = useState<any>(null);
   const [recentConvos, setRecentConvos] = useState<ConvSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +96,16 @@ export default function DashboardPage() {
       const monMap: Record<string, MonitorData> = {};
       const anaMap: Record<string, AnalyticsData> = {};
       const srcMap: Record<string, number> = {};
+      const capMap: Record<string, any> = {};
+      const modMap: Record<string, any[]> = {};
       const allConvos: ConvSummary[] = [];
+
+      const [cStats, lStats] = await Promise.all([
+        getContactStats().catch(() => null),
+        getLeadStats().catch(() => null),
+      ]);
+      setContactStats(cStats);
+      setLeadStats(lStats);
 
       await Promise.all(
         tenantList.map(async (t: Tenant) => {
@@ -100,11 +113,15 @@ export default function DashboardPage() {
           try { anaMap[t.id] = await getAnalytics(t.id, 24); } catch {}
           try { const s = await getSources(t.id); srcMap[t.id] = s.length; } catch {}
           try { const c = await getConversations(t.id); allConvos.push(...c.slice(0, 3)); } catch {}
+          try { capMap[t.id] = await getWpCapabilities(t.id); } catch {}
+          try { modMap[t.id] = await getModuleEvents(t.id, 168); } catch {}
         })
       );
       setMonitorMap(monMap);
       setAnalyticsMap(anaMap);
       setSourcesMap(srcMap);
+      setCapsMap(capMap);
+      setModulesMap(modMap);
       allConvos.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setRecentConvos(allConvos.slice(0, 8));
     } catch (e: any) {
@@ -162,7 +179,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* ─── Stat Cards ─── */}
-          <div className="mt-6 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-6 grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
             <StatCard icon={Globe} label="Websites" value={prodTenants.length} color="brand" />
             <StatCard
               icon={totalCritical > 0 ? ShieldAlert : ShieldCheck}
@@ -181,6 +198,8 @@ export default function DashboardPage() {
               color={overview?.today?.escalations > 0 ? "red" : "brand"}
             />
             <StatCard icon={Database} label="Kennisbronnen" value={totalSources} color="green" />
+            <StatCard icon={Users} label="Contacts" value={contactStats?.total || 0} sub={contactStats?.today ? `+${contactStats.today} vandaag` : ""} color="brand" />
+            <StatCard icon={Zap} label="Leads" value={leadStats?.total || 0} sub={leadStats?.this_week ? `+${leadStats.this_week} deze week` : ""} color="purple" />
           </div>
 
           {/* ─── Main Grid: Websites + Activity ─── */}
@@ -203,6 +222,8 @@ export default function DashboardPage() {
                     monitor={monitorMap[tenant.id]}
                     analytics={analyticsMap[tenant.id]}
                     sources={sourcesMap[tenant.id] || 0}
+                    caps={capsMap[tenant.id]}
+                    events={modulesMap[tenant.id] || []}
                     onTestChat={() => setChatTenant(tenant)}
                   />
                 ))}
@@ -479,10 +500,13 @@ function StatCard({
 
 /* ─── Website Card ─── */
 function WebsiteCard({
-  tenant, monitor, analytics, sources, onTestChat,
+  tenant, monitor, analytics, sources, caps, events, onTestChat,
 }: {
-  tenant: Tenant; monitor?: MonitorData; analytics?: AnalyticsData; sources: number; onTestChat: () => void;
+  tenant: Tenant; monitor?: MonitorData; analytics?: AnalyticsData; sources: number; caps?: any; events?: any[]; onTestChat: () => void;
 }) {
+  const connected = caps && !caps.error && caps.wordpress;
+  const connectorVersion = caps?.woocommerce ? 'v4 WC' : caps?.wordpress ? 'v4' : null;
+  const recentEvents = (events || []).slice(0, 3);
   const statusColor =
     monitor?.overall_status === "critical" ? "bg-red-500"
     : monitor?.overall_status === "warning" ? "bg-yellow-500"
@@ -539,12 +563,23 @@ function WebsiteCard({
         </div>
       )}
 
+      {/* Connector Status */}
+      <div className="mt-3 flex items-center gap-2">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ${connected ? 'bg-green-500/15 text-green-400' : 'bg-white/5 text-white/25'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-white/20'}`} />
+          {connected ? connectorVersion : 'No connector'}
+        </span>
+        {caps?.woocommerce && <span className="rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-bold text-blue-400">Shop</span>}
+        {caps?.wpml && <span className="rounded-full bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-bold text-purple-400">WPML</span>}
+        {caps?.fluent_forms && <span className="rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[9px] font-bold text-yellow-400">Forms</span>}
+      </div>
+
       {/* Stats Row */}
       <div className="mt-3 grid grid-cols-4 gap-2">
         <MiniStat icon={Eye} label="Bezoekers" value={analytics?.summary?.total_sessions || 0} />
         <MiniStat icon={TrendingUp} label="Views" value={analytics?.summary?.total_pageviews || 0} />
         <MiniStat icon={Database} label="Bronnen" value={sources} />
-        <MiniStat icon={MessageSquare} label="Bounce" value={`${analytics?.summary?.bounce_rate || 0}%`} />
+        <MiniStat icon={MessageSquare} label="Events" value={recentEvents.length} />
       </div>
 
       {/* Actions */}

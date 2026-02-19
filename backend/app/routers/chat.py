@@ -30,6 +30,9 @@ from app.services.escalation import escalate_conversation
 from app.services.llm import generate_response
 from app.services.rag import retrieve_relevant_chunks, build_context
 from app.models.monitor import MonitorCheck, Alert, CheckStatus
+from app.models.module_event import ModuleEvent
+from app.models.contact import Contact
+from app.models.lead import Lead
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -164,10 +167,66 @@ async def chat(
         except Exception:
             pass  # Don't break chat if monitoring fails
 
+    # ─── [2c] BUSINESS CONTEXT: Live data from module events ───
+    business_context = None
+    try:
+        from datetime import timedelta
+        from sqlalchemy import desc, func as sqlfunc
+        week_ago = datetime.utcnow() - timedelta(days=7)
+
+        # Recent orders
+        orders_result = await db.execute(
+            select(ModuleEvent)
+            .where(ModuleEvent.tenant_id == tenant_uuid)
+            .where(ModuleEvent.event_type.in_(["order_placed", "order_completed"]))
+            .where(ModuleEvent.created_at >= week_ago)
+            .order_by(desc(ModuleEvent.created_at))
+            .limit(5)
+        )
+        recent_orders = orders_result.scalars().all()
+
+        # Recent form submissions
+        forms_result = await db.execute(
+            select(ModuleEvent)
+            .where(ModuleEvent.tenant_id == tenant_uuid)
+            .where(ModuleEvent.event_type == "form_submitted")
+            .where(ModuleEvent.created_at >= week_ago)
+            .order_by(desc(ModuleEvent.created_at))
+            .limit(3)
+        )
+        recent_forms = forms_result.scalars().all()
+
+        # Contact count
+        contact_count = (await db.execute(
+            select(sqlfunc.count(Contact.id)).where(Contact.tenant_id == tenant_uuid)
+        )).scalar() or 0
+
+        lines = []
+        if recent_orders:
+            lines.append(f"Recente bestellingen ({len(recent_orders)} deze week):")
+            for o in recent_orders[:3]:
+                lines.append(f"  - {o.title}")
+        if recent_forms:
+            lines.append(f"Recente formulierinzendingen ({len(recent_forms)}):")
+            for f in recent_forms[:2]:
+                lines.append(f"  - {f.title}")
+        if contact_count > 0:
+            lines.append(f"Totaal bekende klanten/contacten: {contact_count}")
+
+        if lines:
+            business_context = "\n".join(lines)
+    except Exception:
+        pass  # Don't break chat if business context fails
+
+    # ─── Combine all context ───
+    full_context = context
+    if business_context:
+        full_context += f"\n\n--- LIVE BEDRIJFSDATA ---\n{business_context}\n--- EINDE BEDRIJFSDATA ---"
+
     # ─── [3] RESPONSE: Generate with LLM ───
     llm_result = await generate_response(
         user_message=body.message,
-        context=context,
+        context=full_context,
         plan=tenant.plan,
         conversation_history=conversation_history,
         monitoring_context=monitoring_context,

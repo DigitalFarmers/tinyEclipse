@@ -401,3 +401,59 @@ export async function getLeadStats(tenantId?: string) {
   const params = tenantId ? `?tenant_id=${tenantId}` : "";
   return apiFetch(`/api/admin/leads/stats${params}`);
 }
+
+// ─── Contacts ───
+
+export async function getContacts(tenantId?: string, search?: string, limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (tenantId) params.set("tenant_id", tenantId);
+  if (search) params.set("search", search);
+  return apiFetch(`/api/admin/contacts/?${params}`);
+}
+
+export async function getContact(id: string) {
+  return apiFetch(`/api/admin/contacts/${id}`);
+}
+
+export async function getContactStats(tenantId?: string) {
+  const params = tenantId ? `?tenant_id=${tenantId}` : "";
+  return apiFetch(`/api/admin/contacts/stats${params}`);
+}
+
+// ─── WP Write Proxy ───
+
+export async function triggerFullSync(tenantId: string) {
+  return apiFetch(`/api/admin/wp/${tenantId}/sync/trigger`, { method: "POST" });
+}
+
+export async function updateWpPage(tenantId: string, pageId: number, data: Record<string, string>) {
+  return apiFetch(`/api/admin/wp/${tenantId}/pages/${pageId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateWpProduct(tenantId: string, productId: number, data: Record<string, any>) {
+  return apiFetch(`/api/admin/wp/${tenantId}/products/${productId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateWpOrderStatus(tenantId: string, orderId: number, data: { status: string; note?: string }) {
+  return apiFetch(`/api/admin/wp/${tenantId}/orders/${orderId}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getWpContent(tenantId: string, type = "page", limit = 100) {
+  return apiFetch(`/api/admin/wp/${tenantId}/content?type=${type}&limit=${limit}`);
+}
+
+export async function getModuleEvents(tenantId: string, hours = 168) {
+  return apiFetch(`/api/admin/module-events/${tenantId}?hours=${hours}&limit=100`);
+}

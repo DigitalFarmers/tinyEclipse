@@ -9,13 +9,15 @@ import uuid
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant
+from app.services.wp_sync import process_full_sync
 
 logger = logging.getLogger(__name__)
 
@@ -132,3 +134,92 @@ async def get_shop_stats(
 async def get_mail_status(tenant_id: str, db: AsyncSession = Depends(get_db)):
     tenant = await _get_tenant(tenant_id, db)
     return await _wp_get(tenant, "/mail/status")
+
+
+# ─── POST helper ───
+
+async def _wp_post(tenant: Tenant, path: str, data: dict | None = None) -> dict:
+    """Make a POST request to a WordPress site's tinyeclipse/v1 REST API."""
+    url = f"https://{tenant.domain}/wp-json/tinyeclipse/v1{path}"
+    headers = {"X-Tenant-Id": str(tenant.id), "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            r = await client.post(url, headers=headers, json=data or {})
+            if r.status_code == 200:
+                return r.json()
+            logger.warning(f"[wp-proxy] POST {url} returned {r.status_code}")
+            return {"error": True, "status": r.status_code, "detail": r.text[:200]}
+    except Exception as e:
+        logger.warning(f"[wp-proxy] Failed to POST {url}: {e}")
+        return {"error": True, "detail": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════
+# SYNC — Receive full data dump from connector v4
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/{tenant_id}/sync")
+async def receive_full_sync(tenant_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Receive full sync data from connector v4 and process into contacts."""
+    tenant = await _get_tenant(tenant_id, db)
+    data = await request.json()
+    stats = await process_full_sync(db, tenant.id, data)
+    await db.commit()
+    return {"status": "synced", "tenant": tenant.name, **stats}
+
+
+@router.post("/{tenant_id}/sync/trigger")
+async def trigger_full_sync(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """Trigger the connector on the WordPress site to do a full sync."""
+    tenant = await _get_tenant(tenant_id, db)
+    return await _wp_post(tenant, "/sync/full")
+
+
+# ═══════════════════════════════════════════════════════════════
+# WRITE — Proxy write operations to WordPress
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/{tenant_id}/pages/{page_id}")
+async def update_page(tenant_id: str, page_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update a page/post on the WordPress site."""
+    tenant = await _get_tenant(tenant_id, db)
+    data = await request.json()
+    return await _wp_post(tenant, f"/pages/{page_id}", data)
+
+
+@router.post("/{tenant_id}/products/{product_id}")
+async def update_product(tenant_id: str, product_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update a WooCommerce product on the WordPress site."""
+    tenant = await _get_tenant(tenant_id, db)
+    data = await request.json()
+    return await _wp_post(tenant, f"/products/{product_id}", data)
+
+
+@router.post("/{tenant_id}/orders/{order_id}/status")
+async def update_order_status(tenant_id: str, order_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update an order status on the WordPress site."""
+    tenant = await _get_tenant(tenant_id, db)
+    data = await request.json()
+    return await _wp_post(tenant, f"/orders/{order_id}/status", data)
+
+
+@router.post("/{tenant_id}/options")
+async def update_options(tenant_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update site options on the WordPress site."""
+    tenant = await _get_tenant(tenant_id, db)
+    data = await request.json()
+    return await _wp_post(tenant, "/options", data)
+
+
+# ─── Content (read all pages/posts) ───
+
+@router.get("/{tenant_id}/content")
+async def get_content(
+    tenant_id: str,
+    type: str = Query("page"),
+    limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all pages/posts from the WordPress site for content management."""
+    tenant = await _get_tenant(tenant_id, db)
+    return await _wp_get(tenant, "/content", {"type": type, "limit": limit})
