@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.usage_log import UsageLog
 from app.models.source import Source, SourceType, SourceStatus
 from app.services.scraper import scrape_sitemap, scrape_url
+from app.services.deep_scraper import deep_scrape_site
 from app.services.embeddings import ingest_source
 from app.services.module_detector import detect_modules
 
@@ -39,48 +40,110 @@ class TenantCreate(BaseModel):
     auto_scrape: bool = True
 
 
-async def _auto_scrape_site(tenant_id: uuid.UUID, domain: str):
-    """Background task: scrape a tenant's domain and index all pages."""
-    url = f"https://{domain}" if not domain.startswith("http") else domain
-    logger.info(f"[auto-scrape] Starting for tenant {tenant_id}: {url}")
+async def _auto_scrape_site(tenant_id: uuid.UUID, domain: str, clear_existing: bool = False):
+    """Background task: deep scrape a tenant's domain and index all content.
+    Uses Deep Scraper v2: WordPress REST API + WooCommerce + structured knowledge extraction."""
+    logger.info(f"[deep-scrape] Starting for tenant {tenant_id}: {domain}")
 
     async with async_session() as db:
         try:
-            pages = await scrape_sitemap(url)
-            if not pages:
-                pages = [url]
+            # Optionally clear existing sources
+            if clear_existing:
+                from sqlalchemy import delete as sql_delete
+                from app.models.embedding import Embedding
+                # Delete embeddings first (FK constraint)
+                existing_sources = await db.execute(
+                    select(Source.id).where(Source.tenant_id == tenant_id)
+                )
+                source_ids = [row[0] for row in existing_sources.all()]
+                if source_ids:
+                    await db.execute(sql_delete(Embedding).where(Embedding.source_id.in_(source_ids)))
+                    await db.execute(sql_delete(Source).where(Source.tenant_id == tenant_id))
+                    await db.flush()
+                    logger.info(f"[deep-scrape] Cleared {len(source_ids)} existing sources for tenant {tenant_id}")
 
-            for page_url in pages[:50]:  # Cap at 50 pages per site
+            # Run deep scraper
+            result = await deep_scrape_site(domain)
+
+            indexed_count = 0
+
+            # Index pages and posts
+            for page in result["pages"]:
                 try:
-                    content = await scrape_url(page_url)
-                    if not content or len(content.strip()) < 50:
-                        continue
-
                     source = Source(
                         id=uuid.uuid4(),
                         tenant_id=tenant_id,
                         type=SourceType.url,
-                        url=page_url,
-                        title=page_url.split("/")[-1] or domain,
-                        content=content,
+                        url=page.get("url", ""),
+                        title=page.get("title", domain),
+                        content=page.get("content", ""),
                         status=SourceStatus.pending,
                     )
                     db.add(source)
                     await db.flush()
-
                     chunks = await ingest_source(db, source)
-                    logger.info(f"[auto-scrape] Indexed {page_url}: {chunks} chunks")
+                    indexed_count += 1
+                    logger.info(f"[deep-scrape] Indexed page: {page.get('title', '?')} ({chunks} chunks)")
                 except Exception as e:
-                    logger.warning(f"[auto-scrape] Failed {page_url}: {e}")
+                    logger.warning(f"[deep-scrape] Failed page {page.get('url', '?')}: {e}")
+                    continue
+
+            # Index products
+            for product in result["products"]:
+                try:
+                    source = Source(
+                        id=uuid.uuid4(),
+                        tenant_id=tenant_id,
+                        type=SourceType.text,
+                        url=product.get("url", ""),
+                        title=product.get("title", "Product"),
+                        content=product.get("content", ""),
+                        status=SourceStatus.pending,
+                    )
+                    db.add(source)
+                    await db.flush()
+                    chunks = await ingest_source(db, source)
+                    indexed_count += 1
+                except Exception as e:
+                    logger.warning(f"[deep-scrape] Failed product {product.get('title', '?')}: {e}")
+                    continue
+
+            # Index knowledge points (high-value structured facts)
+            for kp in result["knowledge_points"]:
+                try:
+                    source = Source(
+                        id=uuid.uuid4(),
+                        tenant_id=tenant_id,
+                        type=SourceType.faq,
+                        title=kp.get("title", "Knowledge Point"),
+                        content=kp.get("content", ""),
+                        status=SourceStatus.pending,
+                    )
+                    db.add(source)
+                    await db.flush()
+                    chunks = await ingest_source(db, source)
+                    indexed_count += 1
+                    logger.info(f"[deep-scrape] Indexed knowledge point: {kp.get('title', '?')}")
+                except Exception as e:
+                    logger.warning(f"[deep-scrape] Failed knowledge point: {e}")
                     continue
 
             await db.commit()
-            logger.info(f"[auto-scrape] Completed for tenant {tenant_id}")
+            logger.info(f"[deep-scrape] Completed for {domain}: {indexed_count} items indexed (stats: {result['stats']})")
 
             # Auto-detect modules after scraping
             try:
                 detected = await detect_modules(domain)
                 for d in detected:
+                    # Check if module already exists
+                    existing = await db.execute(
+                        select(SiteModule).where(
+                            SiteModule.tenant_id == tenant_id,
+                            SiteModule.module_type == ModuleType(d["module_type"]),
+                        )
+                    )
+                    if existing.scalar_one_or_none():
+                        continue
                     module = SiteModule(
                         tenant_id=tenant_id,
                         module_type=ModuleType(d["module_type"]),
@@ -97,7 +160,7 @@ async def _auto_scrape_site(tenant_id: uuid.UUID, domain: str):
                 logger.warning(f"[auto-detect] Module detection failed for {tenant_id}: {e}")
 
         except Exception as e:
-            logger.error(f"[auto-scrape] Fatal error for tenant {tenant_id}: {e}")
+            logger.error(f"[deep-scrape] Fatal error for tenant {tenant_id}: {e}")
             await db.rollback()
 
 
@@ -328,6 +391,40 @@ async def list_client_accounts(
             ],
         })
     return output
+
+
+@router.post("/{tenant_id}/rescrape")
+async def rescrape_tenant(
+    tenant_id: str,
+    background_tasks: BackgroundTasks,
+    clear_existing: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger a deep re-scrape of a tenant's site.
+    Uses Deep Scraper v2: WordPress REST API + WooCommerce + structured knowledge extraction.
+    Set clear_existing=True to wipe old sources first (recommended for re-scrape)."""
+    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if not tenant.domain:
+        raise HTTPException(status_code=400, detail="Tenant has no domain set")
+
+    # Get current source count
+    source_count = await db.execute(
+        select(func.count()).select_from(Source).where(Source.tenant_id == tenant.id)
+    )
+    current_sources = source_count.scalar() or 0
+
+    background_tasks.add_task(_auto_scrape_site, tenant.id, tenant.domain, clear_existing)
+
+    return {
+        "status": "rescrape_started",
+        "tenant_id": tenant_id,
+        "domain": tenant.domain,
+        "clear_existing": clear_existing,
+        "previous_sources": current_sources,
+        "message": f"Deep scrape v2 started for {tenant.domain}. WordPress REST API + WooCommerce + structured knowledge extraction.",
+    }
 
 
 @router.patch("/{tenant_id}")
