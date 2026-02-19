@@ -38,6 +38,16 @@
       poweredBy: "Powered by TinyEclipse",
       connectionError: "Verbindingsfout. Probeer opnieuw.",
       error: "Er ging iets mis. Probeer opnieuw.",
+      contactTitle: "Blijf op de hoogte",
+      contactSub: "Laat je gegevens achter zodat we je kunnen bereiken.",
+      contactEmail: "E-mailadres",
+      contactName: "Je naam",
+      contactPhone: "Telefoonnummer (optioneel)",
+      contactSend: "Verstuur",
+      contactSkip: "Nee bedankt",
+      contactThanks: "Bedankt! We nemen snel contact op.",
+      contactExitTitle: "Voordat je gaat...",
+      contactExitSub: "Laat je e-mail achter en we helpen je verder!",
     },
     en: {
       welcome: "Hello! How can I help you?",
@@ -51,6 +61,16 @@
       poweredBy: "Powered by TinyEclipse",
       connectionError: "Connection error. Please try again.",
       error: "Something went wrong. Please try again.",
+      contactTitle: "Stay in touch",
+      contactSub: "Leave your details so we can reach you.",
+      contactEmail: "Email address",
+      contactName: "Your name",
+      contactPhone: "Phone number (optional)",
+      contactSend: "Send",
+      contactSkip: "No thanks",
+      contactThanks: "Thanks! We'll be in touch soon.",
+      contactExitTitle: "Before you go...",
+      contactExitSub: "Leave your email and we'll help you further!",
     },
     fr: {
       welcome: "Bonjour! Comment puis-je vous aider?",
@@ -64,6 +84,16 @@
       poweredBy: "Powered by TinyEclipse",
       connectionError: "Erreur de connexion. Réessayez.",
       error: "Quelque chose s'est mal passé. Réessayez.",
+      contactTitle: "Restons en contact",
+      contactSub: "Laissez vos coordonnées pour qu'on puisse vous recontacter.",
+      contactEmail: "Adresse e-mail",
+      contactName: "Votre nom",
+      contactPhone: "Téléphone (optionnel)",
+      contactSend: "Envoyer",
+      contactSkip: "Non merci",
+      contactThanks: "Merci! Nous vous contacterons bientôt.",
+      contactExitTitle: "Avant de partir...",
+      contactExitSub: "Laissez votre e-mail et nous vous aiderons!",
     },
   };
   const t = STRINGS[LANG] || STRINGS.nl;
@@ -77,6 +107,8 @@
   let isLoading = false;
   let sessionStarted = false;
   let proactiveShown = false;
+  let leadCaptured = false;
+  let userMessageCount = 0;
   let currentPath = location.pathname;
   let pageEnterTime = Date.now();
   let scrollMax = 0;
@@ -242,7 +274,11 @@
     document.addEventListener("mouseout", function (e) {
       if (e.clientY < 5 && !proactiveShown) {
         trackEvent("exit_intent");
-        showProactiveMessage(t.proactiveExit);
+        if (isOpen && hasConsent && !leadCaptured && userMessageCount > 0) {
+          showContactForm("exit_intent");
+        } else {
+          showProactiveMessage(t.proactiveExit);
+        }
       }
     });
 
@@ -695,7 +731,7 @@
             <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
           </button>
         </div>
-        <div class="te-footer" style="display:none;"><a href="https://tinyeclipse.digitalfarmers.be/about" target="_blank">${t.poweredBy}</a></div>
+        <div class="te-footer" style="display:none;"><a href="https://tinyeclipse.digitalfarmers.be" target="_blank">${t.poweredBy}</a></div>
       </div>
       <button id="te-toggle-btn" aria-label="Open chat">
         <div class="te-pulse"></div>
@@ -796,7 +832,12 @@
     div.className = `te-msg te-msg-${role}${escalated ? " te-msg-escalated" : ""}`;
     div.textContent = content;
 
-    // Confidence is tracked internally but never shown to end users
+    if (role === "assistant" && confidence !== undefined && confidence < 0.9) {
+      const conf = document.createElement("div");
+      conf.style.cssText = "font-size:10px;color:#94a3b8;margin-top:4px;";
+      conf.textContent = `Confidence: ${Math.round(confidence * 100)}%`;
+      div.appendChild(conf);
+    }
 
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
@@ -827,6 +868,7 @@
 
     input.value = "";
     addMessage("user", message);
+    userMessageCount++;
     trackEvent("chat_message", { value: message.substring(0, 100) });
     isLoading = true;
     document.getElementById("te-send-btn").disabled = true;
@@ -864,6 +906,12 @@
       const data = await res.json();
       conversationId = data.conversation_id;
       addMessage("assistant", data.message, data.confidence, data.escalated);
+
+      // Show contact form after a real question has been answered
+      // Trigger: user sent 2+ messages AND last message was a real question (has ? or 20+ chars)
+      if (userMessageCount >= 2 && !leadCaptured && (msg.includes("?") || msg.length >= 20)) {
+        setTimeout(function () { showContactForm("chat"); }, 2000);
+      }
     } catch (e) {
       hideTyping();
       addMessage("assistant", t.connectionError);
@@ -872,6 +920,83 @@
       isLoading = false;
       document.getElementById("te-send-btn").disabled = false;
       document.getElementById("te-input").focus();
+    }
+  }
+
+  // ─── Contact / Lead Capture ───
+  function showContactForm(source) {
+    if (leadCaptured) return;
+    const msgs = document.getElementById("te-messages");
+    if (!msgs) return;
+
+    const isExit = source === "exit_intent";
+    const existing = document.getElementById("te-contact-form");
+    if (existing) return;
+
+    const form = document.createElement("div");
+    form.id = "te-contact-form";
+    form.style.cssText = "padding:16px;margin:4px 0;background:linear-gradient(135deg," + THEME_COLOR + "08," + THEME_COLOR + "03);border:1px solid " + THEME_COLOR + "20;border-radius:16px;animation:te-msg-in 0.3s ease-out;";
+    form.innerHTML = `
+      <div style="text-align:center;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">${isExit ? t.contactExitTitle : t.contactTitle}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">${isExit ? t.contactExitSub : t.contactSub}</div>
+      </div>
+      <input id="te-lead-email" type="email" placeholder="${t.contactEmail}" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;margin-bottom:8px;outline:none;font-family:inherit;" />
+      <input id="te-lead-name" type="text" placeholder="${t.contactName}" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;margin-bottom:8px;outline:none;font-family:inherit;" />
+      <input id="te-lead-phone" type="tel" placeholder="${t.contactPhone}" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;margin-bottom:12px;outline:none;font-family:inherit;" />
+      <button id="te-lead-submit" style="width:100%;padding:12px;background:${THEME_COLOR};color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity 0.2s;">${t.contactSend}</button>
+      <button id="te-lead-skip" style="width:100%;padding:8px;background:none;border:none;color:#94a3b8;font-size:11px;cursor:pointer;margin-top:4px;font-family:inherit;">${t.contactSkip}</button>
+    `;
+    msgs.appendChild(form);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    document.getElementById("te-lead-submit").addEventListener("click", function () {
+      submitLead(source);
+    });
+    document.getElementById("te-lead-skip").addEventListener("click", function () {
+      leadCaptured = true;
+      form.remove();
+    });
+    document.getElementById("te-lead-email").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); submitLead(source); }
+    });
+  }
+
+  async function submitLead(source) {
+    const email = (document.getElementById("te-lead-email")?.value || "").trim();
+    const name = (document.getElementById("te-lead-name")?.value || "").trim();
+    const phone = (document.getElementById("te-lead-phone")?.value || "").trim();
+
+    if (!email && !name && !phone) return;
+
+    const form = document.getElementById("te-contact-form");
+    const btn = document.getElementById("te-lead-submit");
+    if (btn) { btn.disabled = true; btn.textContent = "..."; }
+
+    try {
+      await fetch(`${API_BASE}/api/leads/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          session_id: sessionId,
+          conversation_id: conversationId,
+          email: email || null,
+          name: name || null,
+          phone: phone || null,
+          source: source,
+          page_url: location.href,
+        }),
+      });
+      leadCaptured = true;
+      trackEvent("lead_captured", { source: source, has_email: !!email });
+      if (form) {
+        form.innerHTML = '<div style="text-align:center;padding:12px;"><div style="font-size:20px;margin-bottom:8px;">✓</div><div style="font-size:13px;color:#1e293b;font-weight:500;">' + t.contactThanks + '</div></div>';
+        setTimeout(function () { form.remove(); }, 4000);
+      }
+    } catch (e) {
+      console.error("[TinyEclipse] Lead capture failed:", e);
+      if (btn) { btn.disabled = false; btn.textContent = t.contactSend; }
     }
   }
 
