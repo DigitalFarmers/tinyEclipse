@@ -23,6 +23,7 @@ import {
   UserPlus,
   Contact,
   Terminal,
+  Gauge,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { getTenants, getAlerts, getOverview } from "@/lib/api";
@@ -151,6 +152,7 @@ function Sidebar({ open, onClose, alertCount, chatCount, apiOk }: { open: boolea
         { href: "/admin/conversations", label: "Conversations", icon: MessageSquare, badge: chatCount },
         { href: "/admin/leads", label: "Leads", icon: UserPlus, badge: 0 },
         { href: "/admin/contacts", label: "Contacts", icon: Contact, badge: 0 },
+        { href: "/admin/calibration", label: "Calibratie", icon: Gauge, badge: 0 },
         { href: "/admin/sources", label: "Knowledge Base", icon: Database, badge: 0 },
       ],
     },

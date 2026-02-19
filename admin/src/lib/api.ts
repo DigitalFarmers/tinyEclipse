@@ -457,3 +457,25 @@ export async function getWpContent(tenantId: string, type = "page", limit = 100)
 export async function getModuleEvents(tenantId: string, hours = 168) {
   return apiFetch(`/api/module-events/${tenantId}?hours=${hours}&limit=100`);
 }
+
+// ─── Calibration ───
+
+export async function getCalibrations() {
+  return apiFetch(`/api/admin/calibration/`);
+}
+
+export async function getCalibration(tenantId: string) {
+  return apiFetch(`/api/admin/calibration/${tenantId}`);
+}
+
+export async function enrichTenantGeo(tenantId: string) {
+  return apiFetch(`/api/admin/calibration/${tenantId}/enrich`, { method: "POST" });
+}
+
+export async function updateTenantGeo(tenantId: string, data: Record<string, string>) {
+  return apiFetch(`/api/admin/calibration/${tenantId}/geo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}

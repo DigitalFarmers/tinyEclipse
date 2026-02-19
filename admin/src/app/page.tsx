@@ -71,8 +71,8 @@ export default function LandingPage() {
 
           <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl lg:text-7xl">
             De complete{" "}
-            <span className="bg-gradient-to-r from-brand-300 via-purple-300 to-pink-300 bg-clip-text text-transparent [-webkit-text-fill-color:transparent]">
-              AI-hub
+            <span className="bg-gradient-to-r from-brand-300 via-purple-300 to-pink-300 bg-clip-text" style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>
+              AI-oplossing
             </span>
             <br />
             voor jouw websites

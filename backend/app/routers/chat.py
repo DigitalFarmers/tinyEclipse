@@ -167,7 +167,40 @@ async def chat(
         except Exception:
             pass  # Don't break chat if monitoring fails
 
-    # ─── [2c] BUSINESS CONTEXT: Live data from module events ───
+    # ─── [2c] GEO/TIME CONTEXT: Location & time awareness ───
+    geo_time_context = None
+    try:
+        import zoneinfo
+        geo = tenant.geo_context or {}
+        tz_name = geo.get("timezone", "Europe/Brussels")
+        try:
+            local_tz = zoneinfo.ZoneInfo(tz_name)
+            local_now = datetime.now(local_tz)
+        except Exception:
+            local_now = datetime.utcnow()
+
+        lines_gt = []
+        # Time awareness
+        day_nl = {"Monday": "maandag", "Tuesday": "dinsdag", "Wednesday": "woensdag", "Thursday": "donderdag", "Friday": "vrijdag", "Saturday": "zaterdag", "Sunday": "zondag"}
+        lines_gt.append(f"Huidige lokale tijd: {local_now.strftime('%H:%M')} ({day_nl.get(local_now.strftime('%A'), local_now.strftime('%A'))} {local_now.strftime('%d/%m/%Y')})")
+        if local_now.weekday() >= 5:
+            lines_gt.append("Het is weekend.")
+        if local_now.hour >= 22 or local_now.hour < 7:
+            lines_gt.append("Het is nacht — de meeste winkels zijn gesloten.")
+        elif local_now.hour >= 18:
+            lines_gt.append("Het is avond.")
+
+        # Location awareness
+        if geo.get("neighborhood_description"):
+            lines_gt.append(geo["neighborhood_description"])
+        elif geo.get("city"):
+            lines_gt.append(f"Dit bedrijf is gevestigd in {geo['city']}, {geo.get('country', '')}.")
+
+        geo_time_context = "\n".join(lines_gt)
+    except Exception:
+        pass
+
+    # ─── [2d] BUSINESS CONTEXT: Live data from module events ───
     business_context = None
     try:
         from datetime import timedelta
@@ -220,6 +253,8 @@ async def chat(
 
     # ─── Combine all context ───
     full_context = context
+    if geo_time_context:
+        full_context += f"\n\n--- LOCATIE & TIJD ---\n{geo_time_context}\n--- EINDE LOCATIE & TIJD ---"
     if business_context:
         full_context += f"\n\n--- LIVE BEDRIJFSDATA ---\n{business_context}\n--- EINDE BEDRIJFSDATA ---"
 
