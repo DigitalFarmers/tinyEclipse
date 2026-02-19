@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   User,
+  FileText,
 } from "lucide-react";
 import type { PlanFeatures } from "@/lib/usePortalSession";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
@@ -118,7 +119,7 @@ function MobileBottomNav() {
     { href: "/portal/events", label: "Activiteit", icon: Activity },
     { href: "/portal/ai", label: "AI", icon: Bot },
     { href: "/portal/monitoring", label: "Monitor", icon: Shield },
-    { href: "/portal/account", label: "Account", icon: User },
+    { href: "/portal/reports", label: "Rapport", icon: BarChart3 },
   ];
 
   return (
@@ -156,6 +157,7 @@ function PortalSidebar({ features }: { features: PlanFeatures | null }) {
     { href: "/portal/mail", label: "E-mail", icon: Mail, locked: false },
     { href: "/portal/analytics", label: "Bezoekers", icon: BarChart3, locked: features ? !features.features.analytics_basic : false },
     { href: "/portal/conversations", label: "Gesprekken", icon: MessageSquare, locked: false },
+    { href: "/portal/reports", label: "Rapporten", icon: FileText, locked: false },
     { href: "/portal/account", label: "Mijn Account", icon: User, locked: false },
   ];
 

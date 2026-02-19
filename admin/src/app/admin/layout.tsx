@@ -15,6 +15,7 @@ import {
   Zap,
   LogOut,
   Eye,
+  Brain,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 
@@ -101,6 +102,7 @@ function Sidebar() {
     {
       title: "Intelligence",
       items: [
+        { href: "/admin/insights", label: "AI Insights", icon: Brain },
         { href: "/admin/analytics", label: "Visitor Analytics", icon: Users },
         { href: "/admin/conversations", label: "Conversations", icon: MessageSquare },
         { href: "/admin/sources", label: "Knowledge Base", icon: Database },

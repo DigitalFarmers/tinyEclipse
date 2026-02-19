@@ -30,8 +30,7 @@ export default function PortalConversationsPage() {
 
   useEffect(() => {
     if (!session) return;
-    fetch(`${API_URL}/api/admin/conversations/?tenant_id=${session.tenant_id}`, {
-      headers: { "X-Admin-Key": "" },
+    fetch(`${API_URL}/api/portal/conversations/${session.tenant_id}`, {
       cache: "no-store",
     })
       .then((r) => r.ok ? r.json() : [])
@@ -42,8 +41,7 @@ export default function PortalConversationsPage() {
 
   async function loadConversation(id: string) {
     try {
-      const r = await fetch(`${API_URL}/api/admin/conversations/${id}`, {
-        headers: { "X-Admin-Key": "" },
+      const r = await fetch(`${API_URL}/api/portal/conversations/${session.tenant_id}/${id}`, {
         cache: "no-store",
       });
       if (r.ok) setSelected(await r.json());
