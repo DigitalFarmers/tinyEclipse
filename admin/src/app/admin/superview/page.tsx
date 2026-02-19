@@ -185,89 +185,104 @@ export default function AdminSuperviewPage() {
         />
       </div>
 
-      {/* Tenant Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((t) => {
-          const isStaging = t.environment === "staging";
+      {/* Grouped by Client */}
+      {(() => {
+        // Group filtered tenants by whmcs_client_id
+        const groups: Record<number, { tenants: typeof filtered; totalChats: number; totalAlerts: number }> = {};
+        for (const t of filtered) {
+          if (!groups[t.whmcs_client_id]) groups[t.whmcs_client_id] = { tenants: [], totalChats: 0, totalAlerts: 0 };
+          groups[t.whmcs_client_id].tenants.push(t);
+          groups[t.whmcs_client_id].totalChats += t.chats_24h;
+          groups[t.whmcs_client_id].totalAlerts += t.open_alerts;
+        }
+
+        return Object.entries(groups).map(([whmcsId, group]) => {
+          const prod = group.tenants.filter(t => t.environment !== "staging");
+          const staging = group.tenants.filter(t => t.environment === "staging");
+          const clientName = prod[0]?.name || staging[0]?.name || `Client #${whmcsId}`;
+
           return (
-          <div
-            key={t.tenant_id}
-            className={`rounded-xl border p-4 transition hover:border-white/10 ${
-              isStaging
-                ? "border-yellow-500/10 bg-yellow-500/[0.02] opacity-70"
-                : t.open_alerts > 0
-                ? "border-red-500/20 bg-red-500/[0.02]"
-                : t.status === "active"
-                ? "border-white/5 bg-white/[0.02]"
-                : "border-white/5 bg-white/[0.01] opacity-50"
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold">{t.name}</h3>
-                  {isStaging && <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-400">staging</span>}
+            <div key={whmcsId} className="mb-6">
+              {/* Client header */}
+              <div className="mb-3 flex items-center justify-between">
+                <a href={`/admin/clients/${whmcsId}`} className="flex items-center gap-3 transition hover:opacity-80">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500/20 to-purple-500/20">
+                    <Users className="h-4 w-4 text-brand-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold">{clientName}</h3>
+                    <p className="text-[10px] text-white/30">
+                      WHMCS #{whmcsId} · {prod.length} project{prod.length !== 1 ? "en" : ""}
+                      {staging.length > 0 && ` · ${staging.length} staging`}
+                    </p>
+                  </div>
+                </a>
+                <div className="flex items-center gap-3 text-[10px] text-white/30">
+                  <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" /> {group.totalChats}</span>
+                  {group.totalAlerts > 0 && <span className="flex items-center gap-1 text-red-400"><ShieldAlert className="h-3 w-3" /> {group.totalAlerts}</span>}
                 </div>
-                <p className="text-[11px] text-white/30">{t.domain}</p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${PLAN_COLORS[t.plan] || PLAN_COLORS.tiny}`}>
-                  {t.plan}
-                </span>
-              </div>
-            </div>
 
-            {/* Quick stats */}
-            <div className="mt-3 flex items-center gap-4 text-[10px] text-white/40">
-              <span className="flex items-center gap-1">
-                <MessageSquare className="h-2.5 w-2.5" /> {t.chats_24h} chats
-              </span>
-              {t.open_alerts > 0 && (
-                <span className="flex items-center gap-1 text-red-400">
-                  <ShieldAlert className="h-2.5 w-2.5" /> {t.open_alerts} alerts
-                </span>
-              )}
-              <span className="text-white/20">WHMCS #{t.whmcs_client_id}</span>
-            </div>
-
-            {/* Modules */}
-            {t.modules.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {t.modules.map((mod) => {
-                  const Icon = MODULE_ICONS[mod] || Puzzle;
+              {/* Tenant cards */}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {group.tenants.map((t) => {
+                  const isStaging = t.environment === "staging";
                   return (
-                    <span
-                      key={mod}
-                      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] ${MODULE_COLORS[mod] || "text-white/30 bg-white/5"}`}
+                    <div
+                      key={t.tenant_id}
+                      className={`rounded-xl border p-4 transition hover:border-white/10 ${
+                        isStaging
+                          ? "border-yellow-500/10 bg-yellow-500/[0.02] opacity-70"
+                          : t.open_alerts > 0
+                          ? "border-red-500/20 bg-red-500/[0.02]"
+                          : t.status === "active"
+                          ? "border-white/5 bg-white/[0.02]"
+                          : "border-white/5 bg-white/[0.01] opacity-50"
+                      }`}
                     >
-                      <Icon className="h-2 w-2" />
-                      {mod}
-                    </span>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold">{t.name}</h3>
+                            {isStaging && <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-medium text-yellow-400">staging</span>}
+                          </div>
+                          <p className="text-[11px] text-white/30">{t.domain}</p>
+                        </div>
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${PLAN_COLORS[t.plan] || PLAN_COLORS.tiny}`}>
+                          {t.plan}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-4 text-[10px] text-white/40">
+                        <span className="flex items-center gap-1"><MessageSquare className="h-2.5 w-2.5" /> {t.chats_24h} chats</span>
+                        {t.open_alerts > 0 && <span className="flex items-center gap-1 text-red-400"><ShieldAlert className="h-2.5 w-2.5" /> {t.open_alerts}</span>}
+                      </div>
+
+                      {t.modules.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {t.modules.map((mod) => {
+                            const Icon = MODULE_ICONS[mod] || Puzzle;
+                            return (
+                              <span key={mod} className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] ${MODULE_COLORS[mod] || "text-white/30 bg-white/5"}`}>
+                                <Icon className="h-2 w-2" /> {mod}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex gap-2">
+                        <a href={`/admin/tenants/${t.tenant_id}`} className="rounded-lg bg-white/5 px-2.5 py-1 text-[10px] text-white/40 transition hover:bg-white/10 hover:text-white/60">Details →</a>
+                        {!isStaging && <a href={`/portal?sso=${t.tenant_id}`} target="_blank" className="rounded-lg bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-400 transition hover:bg-brand-500/20">Portal →</a>}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
-            )}
-
-            {/* Actions */}
-            <div className="mt-3 flex gap-2">
-              <a
-                href={`/admin/tenants/${t.tenant_id}`}
-                className="rounded-lg bg-white/5 px-2.5 py-1 text-[10px] text-white/40 transition hover:bg-white/10 hover:text-white/60"
-              >
-                Details →
-              </a>
-              <a
-                href={`/portal?sso=${t.tenant_id}`}
-                target="_blank"
-                className="rounded-lg bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-400 transition hover:bg-brand-500/20"
-              >
-                Portal →
-              </a>
             </div>
-          </div>
           );
-        })}
-      </div>
+        });
+      })()}
 
       {filtered.length === 0 && (
         <div className="py-12 text-center text-sm text-white/30">
