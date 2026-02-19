@@ -455,5 +455,5 @@ export async function getWpContent(tenantId: string, type = "page", limit = 100)
 }
 
 export async function getModuleEvents(tenantId: string, hours = 168) {
-  return apiFetch(`/api/admin/module-events/${tenantId}?hours=${hours}&limit=100`);
+  return apiFetch(`/api/module-events/${tenantId}?hours=${hours}&limit=100`);
 }
