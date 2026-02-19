@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   Briefcase,
   FileText,
+  FileEdit,
   BookOpen,
   Calendar,
   Gift,
@@ -217,7 +218,7 @@ export default function PortalDashboard() {
         Snel Toegang
       </h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <QuickAction href="/portal/events" icon={Activity} label="Activiteit" color="orange" />
+        <QuickAction href="/portal/requests" icon={FileEdit} label="Wijzigingen" color="orange" />
         <QuickAction href="/portal/ai" icon={Bot} label="AI Assistent" color="brand" />
         <QuickAction href="/portal/monitoring" icon={Shield} label="Monitoring" color="green" />
         <QuickAction href="/portal/conversations" icon={MessageSquare} label="Gesprekken" color="purple" />
