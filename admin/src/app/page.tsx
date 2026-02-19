@@ -34,8 +34,11 @@ export default function LandingPage() {
             <Link href="/about" className="text-sm text-white/50 transition hover:text-white">Over ons</Link>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/portal/login" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white">
-              Klant Login
+            <Link href="/portal/login" className="rounded-lg px-4 py-2 text-sm text-white/40 transition hover:text-white">
+              Klant Portal
+            </Link>
+            <Link href="/admin/login" className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">
+              Hub Login
             </Link>
             <a href="#contact" className="rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 px-5 py-2.5 text-sm font-medium transition hover:opacity-90">
               Start nu

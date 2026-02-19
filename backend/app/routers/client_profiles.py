@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -247,4 +248,46 @@ async def get_client_profile(
         },
         "projects": projects,
         "recent_events": recent_events,
+    }
+
+
+
+class UpdateClientRequest(BaseModel):
+    email: str | None = None
+    name: str | None = None
+    company: str | None = None
+    phone: str | None = None
+
+
+@router.patch("/{whmcs_client_id}")
+async def update_client_account(
+    whmcs_client_id: int,
+    body: UpdateClientRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update client account details (email, name, company, phone)."""
+    result = await db.execute(
+        select(ClientAccount).where(ClientAccount.whmcs_client_id == whmcs_client_id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Client niet gevonden")
+
+    if body.email is not None:
+        account.email = body.email
+    if body.name is not None:
+        account.name = body.name
+    if body.company is not None:
+        account.company = body.company
+    if body.phone is not None:
+        account.phone = body.phone
+
+    await db.commit()
+
+    return {
+        "status": "updated",
+        "whmcs_client_id": whmcs_client_id,
+        "email": account.email,
+        "name": account.name,
+        "company": account.company,
     }
