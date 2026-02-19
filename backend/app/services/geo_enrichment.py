@@ -32,7 +32,7 @@ async def enrich_tenant_geo(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     if not tenant:
         return {"error": "Tenant not found"}
 
-    geo = tenant.geo_context or {}
+    geo = dict(tenant.geo_context) if tenant.geo_context else {}
     domain = tenant.domain
 
     # Step 1: Try to get location from WordPress site (via connector)
