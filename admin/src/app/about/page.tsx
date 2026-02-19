@@ -70,12 +70,17 @@ export default function AboutPage() {
       </main>
 
       <footer className="border-t border-white/5 px-6 py-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-600"><Zap className="h-3 w-3 text-white" /></div>
             <span className="text-xs font-bold">Tiny<span className="text-brand-500">Eclipse</span></span>
           </div>
-          <p className="text-[10px] text-white/30">&copy; {new Date().getFullYear()} Digital Farmers</p>
+          <p className="text-[10px] text-white/30">&copy; {new Date().getFullYear()} Digital Farmers BV. Alle rechten voorbehouden.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/terms" className="text-[10px] text-white/30 transition hover:text-white/60">Voorwaarden</Link>
+            <Link href="/privacy" className="text-[10px] text-white/30 transition hover:text-white/60">Privacy</Link>
+            <Link href="/portal/login" className="text-[10px] text-white/30 transition hover:text-white/60">Klant Portal</Link>
+          </div>
         </div>
       </footer>
     </div>

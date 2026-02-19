@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     whmcs_product_pro: int = 0  # WHMCS Product ID for Pro plan
     whmcs_product_pro_plus: int = 0  # WHMCS Product ID for Pro+ plan
 
+    # Escalation
+    escalation_webhook_url: str = ""  # Slack/Discord/custom webhook for escalations
+    escalation_email: str = "info@digitalfarmers.be"  # Email to notify on escalation
+    smtp_host: str = ""  # SMTP for sending escalation emails
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_from: str = "noreply@tinyeclipse.digitalfarmers.be"
+
     # DirectAdmin Integration
     directadmin_url: str = ""  # e.g. https://server.digitalfarmers.be:2222
     directadmin_user: str = ""  # Admin/reseller username

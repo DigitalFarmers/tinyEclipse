@@ -105,17 +105,35 @@ export default function PortalLoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 space-y-3 text-center">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/5" />
+            <span className="text-[10px] text-white/20">of</span>
+            <div className="h-px flex-1 bg-white/5" />
+          </div>
           <a
             href="https://my.digitalfarmers.be/clientarea.php"
-            className="text-xs text-white/30 transition hover:text-white/50"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-2.5 text-xs font-medium text-white/50 transition hover:bg-white/10 hover:text-white/70"
           >
-            Naar mijn Digital Farmers account →
+            <Lock className="h-3 w-3" />
+            Login via Digital Farmers (WHMCS)
           </a>
+          <p className="text-[10px] text-white/20">
+            Geen Tenant ID? Vraag het aan via{" "}
+            <a href="mailto:info@digitalfarmers.be" className="text-brand-400 hover:underline">info@digitalfarmers.be</a>
+          </p>
         </div>
 
-        <p className="mt-4 text-center text-[10px] text-white/15">
-          Powered by TinyEclipse &middot; Digital Farmers
+        <div className="mt-8 flex items-center justify-center gap-4 text-[10px] text-white/15">
+          <a href="/" className="transition hover:text-white/30">Home</a>
+          <span>·</span>
+          <a href="/terms" className="transition hover:text-white/30">Voorwaarden</a>
+          <span>·</span>
+          <a href="/privacy" className="transition hover:text-white/30">Privacy</a>
+        </div>
+
+        <p className="mt-3 text-center text-[10px] text-white/10">
+          Powered by TinyEclipse · Digital Farmers
         </p>
       </div>
     </div>

@@ -31,11 +31,11 @@ export default function LandingPage() {
           <div className="hidden items-center gap-8 md:flex">
             <a href="#features" className="text-sm text-white/50 transition hover:text-white">Features</a>
             <a href="#plans" className="text-sm text-white/50 transition hover:text-white">Pakketten</a>
-            <a href="#about" className="text-sm text-white/50 transition hover:text-white">Over ons</a>
+            <Link href="/about" className="text-sm text-white/50 transition hover:text-white">Over ons</Link>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/admin" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white">
-              Login
+            <Link href="/portal/login" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white">
+              Klant Login
             </Link>
             <a href="#contact" className="rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 px-5 py-2.5 text-sm font-medium transition hover:opacity-90">
               Start nu
@@ -275,23 +275,53 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 px-6 py-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-600">
-              <Zap className="h-4 w-4 text-white" />
+      <footer className="border-t border-white/5 px-6 py-16">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Brand */}
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-600">
+                  <Zap className="h-4 w-4 text-white" />
+                </div>
+                <span className="text-sm font-bold">Tiny<span className="text-brand-500">Eclipse</span></span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-white/30">AI-gestuurde website intelligentie.<br />Gebouwd door Digital Farmers.</p>
             </div>
-            <span className="text-sm font-bold">
-              Tiny<span className="text-brand-500">Eclipse</span>
-            </span>
+            {/* Product */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Product</p>
+              <div className="mt-3 flex flex-col gap-2">
+                <a href="#features" className="text-xs text-white/30 transition hover:text-white/60">Features</a>
+                <a href="#plans" className="text-xs text-white/30 transition hover:text-white/60">Pakketten</a>
+                <Link href="/about" className="text-xs text-white/30 transition hover:text-white/60">Over ons</Link>
+              </div>
+            </div>
+            {/* Toegang */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Toegang</p>
+              <div className="mt-3 flex flex-col gap-2">
+                <Link href="/portal/login" className="text-xs text-white/30 transition hover:text-white/60">Klant Portal</Link>
+                <Link href="/admin/login" className="text-xs text-white/30 transition hover:text-white/60">Admin Panel</Link>
+                <a href="https://my.digitalfarmers.be" target="_blank" rel="noopener" className="text-xs text-white/30 transition hover:text-white/60">WHMCS Klantenzone</a>
+              </div>
+            </div>
+            {/* Juridisch */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Juridisch</p>
+              <div className="mt-3 flex flex-col gap-2">
+                <Link href="/terms" className="text-xs text-white/30 transition hover:text-white/60">Algemene Voorwaarden</Link>
+                <Link href="/privacy" className="text-xs text-white/30 transition hover:text-white/60">Privacybeleid</Link>
+                <a href="mailto:privacy@digitalfarmers.be" className="text-xs text-white/30 transition hover:text-white/60">privacy@digitalfarmers.be</a>
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-white/30">
-            &copy; {new Date().getFullYear()} Digital Farmers. Alle rechten voorbehouden.
-          </p>
-          <div className="flex items-center gap-6">
-            <a href="/privacy" className="text-xs text-white/30 transition hover:text-white/60">Privacy</a>
-            <a href="/terms" className="text-xs text-white/30 transition hover:text-white/60">Voorwaarden</a>
-            <Link href="/admin" className="text-xs text-white/30 transition hover:text-white/60">Admin</Link>
+          <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-white/5 pt-8 sm:flex-row">
+            <p className="text-[11px] text-white/20">&copy; {new Date().getFullYear()} Digital Farmers BV. Alle rechten voorbehouden.</p>
+            <div className="flex items-center gap-4">
+              <Link href="/terms" className="text-[11px] text-white/20 transition hover:text-white/40">Voorwaarden</Link>
+              <Link href="/privacy" className="text-[11px] text-white/20 transition hover:text-white/40">Privacy</Link>
+            </div>
           </div>
         </div>
       </footer>
