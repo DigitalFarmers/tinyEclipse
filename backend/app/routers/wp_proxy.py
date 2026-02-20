@@ -75,6 +75,10 @@ async def _wp_rest_get(tenant: Tenant, path: str, params: dict | None = None) ->
 @router.get("/{tenant_id}/capabilities")
 async def get_capabilities(tenant_id: str, db: AsyncSession = Depends(get_db)):
     tenant = await _get_tenant(tenant_id, db)
+    # Try eclipse-ai hub/status first (has capabilities), then tinyeclipse capabilities
+    status = await _wp_rest_get(tenant, "eclipse-ai/v1/hub/status")
+    if isinstance(status, dict) and not status.get("error"):
+        return status
     return await _wp_get(tenant, "/capabilities")
 
 
