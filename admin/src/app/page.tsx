@@ -71,7 +71,10 @@ export default function LandingPage() {
 
           <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl lg:text-7xl">
             De complete{" "}
-            <span className="bg-gradient-to-r from-brand-300 via-purple-300 to-pink-300 bg-clip-text" style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>
+            <span
+              className="bg-gradient-to-r from-[#22d3ee] via-[#a78bfa] to-[#f472b6] bg-clip-text"
+              style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}
+            >
               AI-oplossing
             </span>
             <br />
