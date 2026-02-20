@@ -113,7 +113,12 @@ export default function TenantDetailPage() {
           <div><p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Tenant ID</p><p className="mt-1 font-mono text-xs text-white/60">{tenant.id}</p></div>
           <button onClick={() => copyId(tenant.id)} className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-[10px] text-white/40 transition hover:bg-white/10">{copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}{copied ? "Gekopieerd!" : "Kopieer"}</button>
         </div>
-        {embedConfig && <div className="mt-3 border-t border-white/5 pt-3"><p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Widget Embed</p><pre className="mt-1 overflow-x-auto rounded-lg bg-black/30 p-2 text-[10px] text-white/50">{`<script src="${embedConfig.widget_url}" data-tenant="${tenant.id}"></script>`}</pre></div>}
+        <div className="mt-3 border-t border-white/5 pt-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Widget Embed Code</p>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-black/30 p-3 text-[11px] text-green-400/80 leading-relaxed select-all">{`<script src="${API_URL}/widget/v1/widget.js"\n  data-tenant="${tenant.id}"\n  data-api="${API_URL}"\n  data-color="${tenant.settings?.widget_color || '#6C3CE1'}"\n  data-name="${tenant.settings?.widget_name || tenant.name + ' AI'}"\n  data-lang="${tenant.settings?.widget_lang || 'nl'}"\n  data-position="${tenant.settings?.widget_position || 'bottom-right'}"\n  defer><\/script>`}</pre>
+          <button onClick={() => { navigator.clipboard.writeText(`<script src="${API_URL}/widget/v1/widget.js" data-tenant="${tenant.id}" data-api="${API_URL}" data-color="${tenant.settings?.widget_color || '#6C3CE1'}" data-name="${tenant.settings?.widget_name || tenant.name + ' AI'}" data-lang="${tenant.settings?.widget_lang || 'nl'}" data-position="${tenant.settings?.widget_position || 'bottom-right'}" defer><\/script>`); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="mt-2 flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-3 py-1.5 text-[10px] font-medium text-brand-400 transition hover:bg-brand-500/20">{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied ? "Gekopieerd!" : "Kopieer embed code"}</button>
+          <p className="mt-2 text-[10px] text-white/20">Plak in WordPress: Appearance → Theme Header, of gebruik de eclipse-ai plugin settings.</p>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
