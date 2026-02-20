@@ -92,6 +92,36 @@ async def verify_site(tenant_id: str, request: Request, db: AsyncSession = Depen
     }
 
 
+# ─── Public: Auto-onboard by domain ───
+
+@public_router.get("/onboard")
+async def onboard_by_domain(domain: str, db: AsyncSession = Depends(get_db)):
+    """Public endpoint — plugin calls this with its domain to get tenant_id + widget config.
+    This allows the eclipse-ai plugin to auto-configure without manual WP admin setup."""
+    domain = domain.strip().lower().replace("https://", "").replace("http://", "").rstrip("/")
+    result = await db.execute(select(Tenant).where(Tenant.domain == domain))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail=f"No tenant found for domain {domain}")
+
+    settings = tenant.settings or {}
+    return {
+        "tenant_id": str(tenant.id),
+        "name": tenant.name,
+        "domain": tenant.domain,
+        "plan": tenant.plan.value,
+        "api_url": "https://api.tinyeclipse.digitalfarmers.be",
+        "widget_url": "https://api.tinyeclipse.digitalfarmers.be/widget/v1/widget.js",
+        "widget": {
+            "enabled": settings.get("widget_enabled", True),
+            "color": settings.get("widget_color", "#6C3CE1"),
+            "position": settings.get("widget_position", "bottom-right"),
+            "name": settings.get("widget_name", f"{tenant.name} AI"),
+            "lang": settings.get("widget_lang", "nl"),
+        },
+    }
+
+
 # ─── Admin: Site Registration ───
 
 class SiteRegister(BaseModel):
