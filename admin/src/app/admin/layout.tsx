@@ -24,6 +24,7 @@ import {
   Contact,
   Terminal,
   Gauge,
+  FileEdit,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { getTenants, getAlerts, getOverview } from "@/lib/api";
@@ -159,6 +160,7 @@ function Sidebar({ open, onClose, alertCount, chatCount, apiOk }: { open: boolea
     {
       title: "Operations",
       items: [
+        { href: "/admin/requests", label: "Verzoeken", icon: FileEdit, badge: 0 },
         { href: "/admin/usage", label: "Usage & Billing", icon: BarChart3, badge: 0 },
         { href: "/admin/alerts", label: "Alerts", icon: Bell, badge: alertCount },
       ],

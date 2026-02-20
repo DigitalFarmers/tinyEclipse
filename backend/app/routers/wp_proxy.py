@@ -39,18 +39,34 @@ async def _get_tenant(tenant_id: str, db: AsyncSession) -> Tenant:
 
 
 async def _wp_get(tenant: Tenant, path: str, params: dict | None = None) -> dict:
-    """Make a GET request to a WordPress site's tinyeclipse/v1 REST API."""
-    url = f"https://{tenant.domain}/wp-json/tinyeclipse/v1{path}"
+    """Try eclipse-ai/v1 first, then tinyeclipse/v1 fallback."""
     headers = {"X-Tenant-Id": str(tenant.id)}
+    namespaces = ["eclipse-ai/v1", "tinyeclipse/v1"]
+    for ns in namespaces:
+        url = f"https://{tenant.domain}/wp-json/{ns}{path}"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+                r = await client.get(url, headers=headers, params=params or {})
+                if r.status_code == 200:
+                    return r.json()
+                if r.status_code != 404:
+                    logger.warning(f"[wp-proxy] {url} returned {r.status_code}")
+                    return {"error": True, "status": r.status_code, "detail": r.text[:200]}
+        except Exception as e:
+            logger.warning(f"[wp-proxy] Failed to reach {url}: {e}")
+    return {"error": True, "detail": "No working endpoint found"}
+
+
+async def _wp_rest_get(tenant: Tenant, path: str, params: dict | None = None) -> dict | list:
+    """Direct WP REST API call (wp/v2, wc/v3, etc)."""
+    url = f"https://{tenant.domain}/wp-json/{path}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-            r = await client.get(url, headers=headers, params=params or {})
+            r = await client.get(url, params=params or {})
             if r.status_code == 200:
                 return r.json()
-            logger.warning(f"[wp-proxy] {url} returned {r.status_code}")
-            return {"error": True, "status": r.status_code, "detail": r.text[:200]}
+            return {"error": True, "status": r.status_code}
     except Exception as e:
-        logger.warning(f"[wp-proxy] Failed to reach {url}: {e}")
         return {"error": True, "detail": str(e)}
 
 
@@ -139,19 +155,20 @@ async def get_mail_status(tenant_id: str, db: AsyncSession = Depends(get_db)):
 # ─── POST helper ───
 
 async def _wp_post(tenant: Tenant, path: str, data: dict | None = None) -> dict:
-    """Make a POST request to a WordPress site's tinyeclipse/v1 REST API."""
-    url = f"https://{tenant.domain}/wp-json/tinyeclipse/v1{path}"
+    """POST to eclipse-ai/v1 first, then tinyeclipse/v1 fallback."""
     headers = {"X-Tenant-Id": str(tenant.id), "Content-Type": "application/json"}
-    try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            r = await client.post(url, headers=headers, json=data or {})
-            if r.status_code == 200:
-                return r.json()
-            logger.warning(f"[wp-proxy] POST {url} returned {r.status_code}")
-            return {"error": True, "status": r.status_code, "detail": r.text[:200]}
-    except Exception as e:
-        logger.warning(f"[wp-proxy] Failed to POST {url}: {e}")
-        return {"error": True, "detail": str(e)}
+    for ns in ["eclipse-ai/v1", "tinyeclipse/v1"]:
+        url = f"https://{tenant.domain}/wp-json/{ns}{path}"
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                r = await client.post(url, headers=headers, json=data or {})
+                if r.status_code == 200:
+                    return r.json()
+                if r.status_code != 404:
+                    return {"error": True, "status": r.status_code, "detail": r.text[:200]}
+        except Exception as e:
+            logger.warning(f"[wp-proxy] Failed to POST {url}: {e}")
+    return {"error": True, "detail": "No working endpoint found"}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -223,3 +240,50 @@ async def get_content(
     """Get all pages/posts from the WordPress site for content management."""
     tenant = await _get_tenant(tenant_id, db)
     return await _wp_get(tenant, "/content", {"type": type, "limit": limit})
+
+
+# ═══════════════════════════════════════════════════════════════
+# DIRECT WP REST API — Public data without plugin auth
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/{tenant_id}/pages")
+async def get_wp_pages(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """Get all pages directly from WP REST API."""
+    tenant = await _get_tenant(tenant_id, db)
+    return await _wp_rest_get(tenant, "wp/v2/pages", {"per_page": 100, "_fields": "id,title,slug,link,status,modified,template,menu_order"})
+
+
+@router.get("/{tenant_id}/posts")
+async def get_wp_posts(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """Get all posts directly from WP REST API."""
+    tenant = await _get_tenant(tenant_id, db)
+    return await _wp_rest_get(tenant, "wp/v2/posts", {"per_page": 100, "_fields": "id,title,slug,link,status,modified,categories"})
+
+
+@router.get("/{tenant_id}/site-info")
+async def get_site_info(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """Get comprehensive site info: eclipse-ai status + WP types + media count."""
+    tenant = await _get_tenant(tenant_id, db)
+    info: dict = {"domain": tenant.domain, "name": tenant.name}
+
+    # Eclipse-AI status
+    status = await _wp_rest_get(tenant, "eclipse-ai/v1/hub/status")
+    if not isinstance(status, dict) or not status.get("error"):
+        info["agent"] = status
+
+    # Post types
+    types = await _wp_rest_get(tenant, "wp/v2/types")
+    if isinstance(types, dict) and not types.get("error"):
+        info["post_types"] = list(types.keys())
+
+    # Pages count
+    pages = await _wp_rest_get(tenant, "wp/v2/pages", {"per_page": 1})
+    if isinstance(pages, list):
+        info["pages_count"] = len(pages)  # Will be 1 max, but header has total
+
+    # Media count
+    media = await _wp_rest_get(tenant, "wp/v2/media", {"per_page": 1})
+    if isinstance(media, list):
+        info["has_media"] = True
+
+    return info
