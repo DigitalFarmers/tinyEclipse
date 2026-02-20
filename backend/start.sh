@@ -25,16 +25,5 @@ asyncio.run(wait_for_db())
 echo "Running database migrations..."
 alembic upgrade head 2>&1 || echo "WARNING: Alembic migration failed (may already be applied)"
 
-echo "Testing imports..."
-python3 -c "
-try:
-    from app.main import app
-    print('All imports OK!')
-except Exception as e:
-    print(f'IMPORT ERROR: {e}')
-    import traceback
-    traceback.print_exc()
-"
-
 echo "Starting TinyEclipse API..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
