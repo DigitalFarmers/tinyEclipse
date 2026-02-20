@@ -12,7 +12,7 @@ from app.models.visitor import VisitorSession, PageView, VisitorEvent
 from app.models.module_event import ModuleEvent
 from app.models.lead import Lead
 from app.models.contact import Contact
-from app.models.change_request import ChangeRequest
+# from app.models.change_request import ChangeRequest  # temporarily disabled
 
 __all__ = [
     "ClientAccount",
@@ -33,5 +33,5 @@ __all__ = [
     "ModuleEvent",
     "Lead",
     "Contact",
-    "ChangeRequest",
+    # "ChangeRequest",
 ]
