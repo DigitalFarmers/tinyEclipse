@@ -4,42 +4,20 @@ ChangeRequest — Klanten kunnen wijzigingen aanvragen via Eclipse.
 Pagina's, producten, formulieren, content, SEO, vertalingen — alles.
 PRO klanten: basis requests. PRO+ klanten: prioriteit + meer types.
 """
-import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, Enum, DateTime, ForeignKey, Float, Text, func
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
 
-class RequestType(str, enum.Enum):
-    page_edit = "page_edit"
-    product_edit = "product_edit"
-    form_edit = "form_edit"
-    content_add = "content_add"
-    seo_update = "seo_update"
-    translation = "translation"
-    design_change = "design_change"
-    bug_report = "bug_report"
-    feature_request = "feature_request"
-    other = "other"
-
-
-class RequestStatus(str, enum.Enum):
-    pending = "pending"
-    in_progress = "in_progress"
-    completed = "completed"
-    rejected = "rejected"
-
-
-class RequestPriority(str, enum.Enum):
-    low = "low"
-    normal = "normal"
-    high = "high"
-    urgent = "urgent"
+# Plain string constants — no SQLAlchemy Enum types needed
+REQUEST_TYPES = ["page_edit", "product_edit", "form_edit", "content_add", "seo_update", "translation", "design_change", "bug_report", "feature_request", "other"]
+REQUEST_STATUSES = ["pending", "in_progress", "completed", "rejected"]
+REQUEST_PRIORITIES = ["low", "normal", "high", "urgent"]
 
 
 class ChangeRequest(Base):
@@ -49,9 +27,9 @@ class ChangeRequest(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     whmcs_client_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
-    request_type: Mapped[RequestType] = mapped_column(Enum(RequestType), nullable=False, default=RequestType.other)
-    priority: Mapped[RequestPriority] = mapped_column(Enum(RequestPriority), nullable=False, default=RequestPriority.normal)
-    status: Mapped[RequestStatus] = mapped_column(Enum(RequestStatus), nullable=False, default=RequestStatus.pending)
+    request_type: Mapped[str] = mapped_column(String(50), nullable=False, default="other")
+    priority: Mapped[str] = mapped_column(String(20), nullable=False, default="normal")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)

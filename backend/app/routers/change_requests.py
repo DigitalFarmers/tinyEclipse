@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import verify_admin_key
-from app.models.change_request import ChangeRequest, RequestStatus, RequestType, RequestPriority
+from app.models.change_request import ChangeRequest, REQUEST_TYPES, REQUEST_STATUSES, REQUEST_PRIORITIES
 from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
@@ -45,21 +45,15 @@ async def create_request(body: CreateRequestBody, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     # Validate type
-    try:
-        req_type = RequestType(body.request_type)
-    except ValueError:
-        req_type = RequestType.other
-
-    try:
-        priority = RequestPriority(body.priority)
-    except ValueError:
-        priority = RequestPriority.normal
+    req_type = body.request_type if body.request_type in REQUEST_TYPES else "other"
+    priority = body.priority if body.priority in REQUEST_PRIORITIES else "normal"
 
     # PRO+ gets high/urgent priority, PRO gets normal max
-    if tenant.plan.value == "tiny":
+    plan = tenant.plan.value if hasattr(tenant.plan, 'value') else str(tenant.plan)
+    if plan == "tiny":
         raise HTTPException(status_code=403, detail="Wijzigingsverzoeken zijn beschikbaar vanaf het PRO pakket")
-    if tenant.plan.value == "pro" and priority in (RequestPriority.high, RequestPriority.urgent):
-        priority = RequestPriority.normal
+    if plan == "pro" and priority in ("high", "urgent"):
+        priority = "normal"
 
     cr = ChangeRequest(
         id=uuid.uuid4(),
@@ -98,9 +92,9 @@ async def list_tenant_requests(tenant_id: str, db: AsyncSession = Depends(get_db
     return [
         {
             "id": str(r.id),
-            "request_type": r.request_type.value if r.request_type else "other",
-            "priority": r.priority.value if r.priority else "normal",
-            "status": r.status.value if r.status else "pending",
+            "request_type": r.request_type or "other",
+            "priority": r.priority or "normal",
+            "status": r.status or "pending",
             "title": r.title,
             "description": r.description,
             "page_url": r.page_url,
@@ -160,9 +154,9 @@ async def list_all_requests(
             "tenant_name": tenant_map.get(r.tenant_id, {}).get("name", "?"),
             "tenant_domain": tenant_map.get(r.tenant_id, {}).get("domain", "?"),
             "whmcs_client_id": r.whmcs_client_id,
-            "request_type": r.request_type.value if r.request_type else "other",
-            "priority": r.priority.value if r.priority else "normal",
-            "status": r.status.value if r.status else "pending",
+            "request_type": r.request_type or "other",
+            "priority": r.priority or "normal",
+            "status": r.status or "pending",
             "title": r.title,
             "description": r.description,
             "page_url": r.page_url,
@@ -178,9 +172,9 @@ async def list_all_requests(
 async def request_stats(db: AsyncSession = Depends(get_db)):
     """Stats over alle verzoeken."""
     total = (await db.execute(select(func.count(ChangeRequest.id)))).scalar() or 0
-    pending = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == RequestStatus.pending))).scalar() or 0
-    in_progress = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == RequestStatus.in_progress))).scalar() or 0
-    completed = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == RequestStatus.completed))).scalar() or 0
+    pending = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == "pending"))).scalar() or 0
+    in_progress = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == "in_progress"))).scalar() or 0
+    completed = (await db.execute(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == "completed"))).scalar() or 0
 
     return {"total": total, "pending": pending, "in_progress": in_progress, "completed": completed}
 
@@ -193,20 +187,14 @@ async def update_request(request_id: str, body: UpdateRequestBody, db: AsyncSess
     if not cr:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    if body.status:
-        try:
-            cr.status = RequestStatus(body.status)
-            if body.status == "completed":
-                cr.completed_at = datetime.now(timezone.utc)
-        except ValueError:
-            pass
+    if body.status and body.status in REQUEST_STATUSES:
+        cr.status = body.status
+        if body.status == "completed":
+            cr.completed_at = datetime.now(timezone.utc)
     if body.admin_notes is not None:
         cr.admin_notes = body.admin_notes
-    if body.priority:
-        try:
-            cr.priority = RequestPriority(body.priority)
-        except ValueError:
-            pass
+    if body.priority and body.priority in REQUEST_PRIORITIES:
+        cr.priority = body.priority
 
     await db.commit()
-    return {"status": "updated", "id": str(cr.id), "new_status": cr.status.value}
+    return {"status": "updated", "id": str(cr.id), "new_status": cr.status}
