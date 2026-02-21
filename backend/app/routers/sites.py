@@ -122,6 +122,126 @@ async def onboard_by_domain(domain: str, db: AsyncSession = Depends(get_db)):
     }
 
 
+# ─── Public: Auto-Onboard (Connector v5) ───
+
+class AutoOnboardRequest(BaseModel):
+    site_url: str
+    site_name: str
+    description: str = ""
+    wp_version: str = ""
+    php_version: str = ""
+    locale: str = "nl"
+    timezone: str = "Europe/Brussels"
+    environment: str = "production"
+    admin_email: str = ""
+    tenant_id: str = ""
+    generated_at: str = ""
+    connector_version: str = ""
+    plugins: list[str] = []
+    plugin_count: int = 0
+    modules: list[str] = []
+
+
+@public_router.post("/auto-onboard")
+async def auto_onboard(
+    body: AutoOnboardRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Auto-onboard endpoint for TinyEclipse Connector v5.
+    Called during plugin activation — zero-config registration.
+    Returns api_key for secure Hub communication.
+    """
+    # Normalize domain
+    domain = body.site_url.strip().lower().replace("https://", "").replace("http://", "").rstrip("/")
+
+    # Check if domain already exists
+    existing = await db.execute(select(Tenant).where(Tenant.domain == domain))
+    tenant = existing.scalar_one_or_none()
+
+    if tenant:
+        # Already registered — return existing credentials
+        api_key = hashlib.sha256(f"{tenant.id}-{tenant.created_at}".encode()).hexdigest()[:32]
+        return {
+            "success": True,
+            "message": "Site already registered",
+            "tenant_id": str(tenant.id),
+            "api_key": f"te-{api_key}",
+            "hub_url": "https://tinyeclipse.digitalfarmers.be",
+            "api_base": "https://api.tinyeclipse.digitalfarmers.be",
+            "plan": tenant.plan.value,
+        }
+
+    # Find WHMCS client by domain or create new
+    max_id_result = await db.execute(select(func.max(Tenant.whmcs_client_id)))
+    max_id = max_id_result.scalar() or 0
+    whmcs_id = max_id + 1
+
+    # Determine environment
+    env = body.environment
+    if "staging" in domain or "test" in domain or "dev" in domain:
+        env = "staging"
+
+    # Create tenant
+    tenant = Tenant(
+        id=uuid.uuid4(),
+        whmcs_client_id=whmcs_id,
+        name=body.site_name or domain,
+        plan=PlanType.tiny,
+        domain=domain,
+        environment=env,
+        settings={
+            "connector_version": body.connector_version,
+            "wp_version": body.wp_version,
+            "php_version": body.php_version,
+            "locale": body.locale,
+            "timezone": body.timezone,
+            "admin_email": body.admin_email,
+            "plugins": body.plugins,
+            "modules": body.modules,
+            "auto_onboarded": True,
+            "onboarded_at": body.generated_at or datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    db.add(tenant)
+    await db.flush()
+
+    # Generate API key
+    api_key = hashlib.sha256(f"{tenant.id}-{tenant.created_at}".encode()).hexdigest()[:32]
+
+    # Auto-setup monitoring
+    try:
+        from app.services.monitor import setup_default_checks
+        await setup_default_checks(db, tenant.id, domain)
+    except Exception as e:
+        logger.error(f"Auto-onboard monitoring setup failed for {domain}: {e}")
+
+    # Auto-scrape site for knowledge base
+    try:
+        from app.routers.tenants import _auto_scrape_site
+        background_tasks.add_task(_auto_scrape_site, tenant.id, domain)
+    except Exception as e:
+        logger.error(f"Auto-onboard scrape failed for {domain}: {e}")
+
+    logger.info(f"Auto-onboarded: {domain} as {tenant.id} (connector {body.connector_version})")
+
+    return {
+        "success": True,
+        "message": "Site registered successfully",
+        "tenant_id": str(tenant.id),
+        "api_key": f"te-{api_key}",
+        "hub_url": "https://tinyeclipse.digitalfarmers.be",
+        "api_base": "https://api.tinyeclipse.digitalfarmers.be",
+        "plan": tenant.plan.value,
+        "features": {
+            "chat": True,
+            "monitoring": True,
+            "knowledge_base": True,
+            "analytics": True,
+        },
+    }
+
+
 # ─── Admin: Site Registration ───
 
 class SiteRegister(BaseModel):

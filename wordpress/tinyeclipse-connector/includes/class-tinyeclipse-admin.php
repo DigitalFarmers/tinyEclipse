@@ -47,6 +47,9 @@ class TinyEclipse_Admin {
             'tinyeclipse_job_duplicate'  => 'manage_woocommerce',
             'tinyeclipse_job_toggle'     => 'manage_woocommerce',
             'tinyeclipse_jobs_bulk'      => 'manage_woocommerce',
+            'tinyeclipse_security_fix'   => 'manage_options',
+            'tinyeclipse_test_email'     => 'manage_options',
+            'tinyeclipse_manual_knowledge_sync' => 'manage_options',
         ];
 
         foreach ($ajax_actions as $action => $cap) {
@@ -71,22 +74,22 @@ class TinyEclipse_Admin {
         $cap = tinyeclipse_get_eclipse_cap();
         $icon = 'data:image/svg+xml;base64,' . base64_encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>');
 
-        add_menu_page('TinyEclipse', 'TinyEclipse', $cap, 'tinyeclipse', [$this, 'page_dashboard'], $icon, 30);
-        add_submenu_page('tinyeclipse', 'Dashboard', 'Dashboard', $cap, 'tinyeclipse', [$this, 'page_dashboard']);
-        add_submenu_page('tinyeclipse', 'Leads', 'Leads', $cap, 'tinyeclipse-leads', [$this, 'page_leads']);
-        add_submenu_page('tinyeclipse', 'Requests', 'Requests', $cap, 'tinyeclipse-requests', [$this, 'page_requests']);
+        add_menu_page('TinyEclipse', '⚡ TinyEclipse', $cap, 'tinyeclipse', [$this, 'page_dashboard'], $icon, 30);
+        add_submenu_page('tinyeclipse', 'Dashboard', '📊 Dashboard', $cap, 'tinyeclipse', [$this, 'page_dashboard']);
+        add_submenu_page('tinyeclipse', 'Leads', '🎯 Leads', $cap, 'tinyeclipse-leads', [$this, 'page_leads']);
+        add_submenu_page('tinyeclipse', 'Requests', '💬 Requests', $cap, 'tinyeclipse-requests', [$this, 'page_requests']);
 
         // Superadmin-only pages
         if (current_user_can('manage_options')) {
-            add_submenu_page('tinyeclipse', 'Security', 'Security', 'manage_options', 'tinyeclipse-security', [$this, 'page_security']);
-            add_submenu_page('tinyeclipse', 'SEO', 'SEO', 'manage_options', 'tinyeclipse-seo', [$this, 'page_seo']);
-            add_submenu_page('tinyeclipse', 'Mail', 'Mail', 'manage_options', 'tinyeclipse-mail', [$this, 'page_mail']);
-            add_submenu_page('tinyeclipse', 'Translation', 'Translation', 'manage_options', 'tinyeclipse-translation', [$this, 'page_translation']);
-            add_submenu_page('tinyeclipse', 'Jobs', 'Jobs', $cap, 'tinyeclipse-jobs', [$this, 'page_jobs']);
-            add_submenu_page('tinyeclipse', 'Forms', 'Forms', 'manage_options', 'tinyeclipse-forms', [$this, 'page_forms']);
-            add_submenu_page('tinyeclipse', 'Tokens', 'Tokens', 'manage_options', 'tinyeclipse-tokens', [$this, 'page_tokens']);
-            add_submenu_page('tinyeclipse', 'Logs', 'Logs', 'manage_options', 'tinyeclipse-logs', [$this, 'page_logs']);
-            add_submenu_page('tinyeclipse', 'Settings', 'Settings', 'manage_options', 'tinyeclipse-settings', [$this, 'page_settings']);
+            add_submenu_page('tinyeclipse', 'Security', '🔒 Security', 'manage_options', 'tinyeclipse-security', [$this, 'page_security']);
+            add_submenu_page('tinyeclipse', 'SEO', '🚀 SEO', 'manage_options', 'tinyeclipse-seo', [$this, 'page_seo']);
+            add_submenu_page('tinyeclipse', 'Mail', '📧 Mail', 'manage_options', 'tinyeclipse-mail', [$this, 'page_mail']);
+            add_submenu_page('tinyeclipse', 'Translation', '🌍 Translation', 'manage_options', 'tinyeclipse-translation', [$this, 'page_translation']);
+            add_submenu_page('tinyeclipse', 'Jobs', '💼 Jobs', $cap, 'tinyeclipse-jobs', [$this, 'page_jobs']);
+            add_submenu_page('tinyeclipse', 'Forms', '📝 Forms', 'manage_options', 'tinyeclipse-forms', [$this, 'page_forms']);
+            add_submenu_page('tinyeclipse', 'Tokens', '🪙 Tokens', 'manage_options', 'tinyeclipse-tokens', [$this, 'page_tokens']);
+            add_submenu_page('tinyeclipse', 'Logs', '📋 Logs', 'manage_options', 'tinyeclipse-logs', [$this, 'page_logs']);
+            add_submenu_page('tinyeclipse', 'Settings', '⚙️ Settings', 'manage_options', 'tinyeclipse-settings', [$this, 'page_settings']);
         }
 
         // Let WC/Analytics plugins add their menu items
@@ -625,8 +628,62 @@ class TinyEclipse_Admin {
 
     public function ajax_security_fix() {
         $fix_type = sanitize_text_field($_POST['fix_type'] ?? '');
-        $result = TinyEclipse_Security::instance()->apply_fix($fix_type);
-        wp_send_json_success($result);
+        $auto_confirm = rest_sanitize_boolean($_POST['auto_confirm'] ?? false);
+        
+        // Call REST API endpoint for token validation and execution
+        $response = wp_remote_post(rest_url('tinyeclipse/v1/security/fix'), [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-Tenant-Id' => tinyeclipse_get_tenant_id(),
+            ],
+            'body' => wp_json_encode([
+                'fix_type' => $fix_type,
+                'auto_confirm' => $auto_confirm
+            ])
+        ]);
+        
+        if (is_wp_error($response)) {
+            wp_send_json_error($response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            wp_send_json_error('Invalid response');
+        }
+        
+        wp_send_json($data);
+    }
+    
+    public function ajax_test_email() {
+        $to = sanitize_email($_POST['to'] ?? get_option('admin_email'));
+        
+        $response = wp_remote_post(rest_url('tinyeclipse/v1/test/email'), [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-Tenant-Id' => tinyeclipse_get_tenant_id(),
+            ],
+            'body' => wp_json_encode(['to' => $to])
+        ]);
+        
+        if (is_wp_error($response)) {
+            wp_send_json_error($response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            wp_send_json_error('Invalid response');
+        }
+        
+        wp_send_json($data);
+    }
+    
+    public function ajax_manual_knowledge_sync() {
+        $result = TinyEclipse_Collector::instance()->sync_knowledge_to_hub(true);
+        wp_send_json($result);
     }
 
     public function ajax_leads_data() { wp_send_json_success(['message' => 'Leads data via Hub API']); }

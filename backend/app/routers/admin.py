@@ -113,6 +113,15 @@ async def list_conversations(
             "status": c.status.value,
             "created_at": c.created_at.isoformat(),
             "message_count": len(c.messages) if c.messages else 0,
+            "visitor_name": getattr(c, 'visitor_name', None),
+            "visitor_email": getattr(c, 'visitor_email', None),
+            "visitor_ip": getattr(c, 'visitor_ip', None),
+            "visitor_country": getattr(c, 'visitor_country', None),
+            "visitor_city": getattr(c, 'visitor_city', None),
+            "visitor_device": getattr(c, 'visitor_device', None),
+            "visitor_browser": getattr(c, 'visitor_browser', None),
+            "visitor_language": getattr(c, 'visitor_language', None),
+            "contact_id": str(c.contact_id) if getattr(c, 'contact_id', None) else None,
         }
         for c in conversations
     ]
@@ -144,6 +153,16 @@ async def get_conversation(
         "channel": conversation.channel,
         "status": conversation.status.value,
         "created_at": conversation.created_at.isoformat(),
+        "visitor_name": getattr(conversation, 'visitor_name', None),
+        "visitor_email": getattr(conversation, 'visitor_email', None),
+        "visitor_ip": getattr(conversation, 'visitor_ip', None),
+        "visitor_country": getattr(conversation, 'visitor_country', None),
+        "visitor_city": getattr(conversation, 'visitor_city', None),
+        "visitor_device": getattr(conversation, 'visitor_device', None),
+        "visitor_browser": getattr(conversation, 'visitor_browser', None),
+        "visitor_language": getattr(conversation, 'visitor_language', None),
+        "contact_id": str(conversation.contact_id) if getattr(conversation, 'contact_id', None) else None,
+        "visitor_identity": getattr(conversation, 'visitor_identity', None),
         "messages": [
             {
                 "id": str(m.id),

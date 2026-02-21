@@ -144,6 +144,17 @@ export default function DashboardPage() {
 
   const tenantName = (id: string) => tenants.find(t => t.id === id)?.name || id.slice(0, 8);
 
+  // Priority sorting: critical first, then warning, then healthy
+  const getPriority = (t: Tenant) => {
+    const m = monitorMap[t.id];
+    if (m?.stats?.critical > 0) return 0; // CRITICAL
+    if (m?.stats?.warning > 0) return 1; // WARNING
+    const connected = capsMap[t.id] && !capsMap[t.id]?.error && capsMap[t.id]?.wordpress;
+    if (!connected) return 2; // NO CONNECTOR
+    return 3; // HEALTHY
+  };
+  const sortedProdTenants = [...prodTenants].sort((a, b) => getPriority(a) - getPriority(b));
+
   if (error) {
     return (
       <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8">
@@ -215,7 +226,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                {prodTenants.map((tenant) => (
+                {sortedProdTenants.map((tenant) => (
                   <WebsiteCard
                     key={tenant.id}
                     tenant={tenant}
@@ -505,7 +516,7 @@ function WebsiteCard({
   tenant: Tenant; monitor?: MonitorData; analytics?: AnalyticsData; sources: number; caps?: any; events?: any[]; onTestChat: () => void;
 }) {
   const connected = caps && !caps.error && caps.wordpress;
-  const connectorVersion = caps?.woocommerce ? 'v4 WC' : caps?.wordpress ? 'v4' : null;
+  const connectorVersion = caps?.woocommerce ? 'v5 WC' : caps?.wordpress ? 'v5' : null;
   const recentEvents = (events || []).slice(0, 3);
   const statusColor =
     monitor?.overall_status === "critical" ? "bg-red-500"
@@ -519,8 +530,36 @@ function WebsiteCard({
     pro_plus: "bg-purple-500/20 text-purple-400",
   };
 
+  // Priority level
+  const isCritical = (monitor?.stats?.critical ?? 0) > 0;
+  const isWarning = (monitor?.stats?.warning ?? 0) > 0;
+  const borderColor = isCritical
+    ? "border-red-500/30 bg-red-500/[0.02]"
+    : isWarning
+    ? "border-yellow-500/20 bg-yellow-500/[0.02]"
+    : !connected
+    ? "border-orange-500/15 bg-orange-500/[0.01]"
+    : "border-white/5 bg-white/[0.02]";
+
   return (
-    <div className="group rounded-2xl border border-white/5 bg-white/[0.02] p-4 transition hover:border-white/10 hover:bg-white/[0.04]">
+    <div className={`group rounded-2xl border p-4 transition hover:border-white/10 hover:bg-white/[0.04] ${borderColor}`}>
+      {/* Priority Badge */}
+      {isCritical && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-400">
+          <ShieldAlert className="h-3 w-3" /> CRITICAL — Actie vereist
+        </div>
+      )}
+      {!isCritical && isWarning && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-yellow-500/10 px-2.5 py-1 text-[10px] font-bold text-yellow-400">
+          <Shield className="h-3 w-3" /> WARNING — Aandacht nodig
+        </div>
+      )}
+      {!isCritical && !isWarning && !connected && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold text-orange-400">
+          <Zap className="h-3 w-3" /> SETUP — Connector installeren
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <Link href={`/admin/tenants/${tenant.id}`} className="flex items-center gap-3 hover:opacity-80">

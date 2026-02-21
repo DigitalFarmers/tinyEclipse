@@ -10,19 +10,16 @@ $env_label = tinyeclipse_is_staging() ? '🟡 Staging' : '🟢 Production';
 $balance = tinyeclipse_get_token_balance();
 $last_sync = get_option('tinyeclipse_last_sync', null);
 
-// Quick stats
-$stats = [
-    'plugins'  => count(get_option('active_plugins', [])),
-    'pages'    => wp_count_posts('page')->publish,
-    'posts'    => wp_count_posts('post')->publish,
-    'users'    => count_users()['total_users'] ?? 0,
-    'comments' => wp_count_comments()->approved,
-];
-
-if (class_exists('WooCommerce')) {
-    $stats['products'] = wp_count_posts('product')->publish;
-    $stats['orders'] = wp_count_posts('shop_order')->{'wc-completed'} ?? 0;
+// Get clickable stats with drill-down data
+$clickable_stats = tinyeclipse_get_clickable_stats();
+$stats = [];
+foreach ($clickable_stats as $key => $stat) {
+    $stats[$key] = $stat['count'];
 }
+
+// Add tokens separately
+$stats['tokens'] = $balance['balance'];
+$token_tier = $balance['tier_label'] ?? $balance['tier'];
 
 // Module status
 $modules = [];
@@ -64,22 +61,52 @@ $modules['analytics'] = defined('TINYECLIPSE_ANALYTICS_VERSION');
     </div>
     <?php endif; ?>
 
-    <!-- Stats Grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
+    <!-- Clickable Stats Grid -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
         <?php
-        $stat_icons = ['plugins' => '📦', 'pages' => '📄', 'posts' => '📝', 'users' => '👥', 'comments' => '💬', 'products' => '🛍️', 'orders' => '📦'];
-        foreach ($stats as $key => $val): ?>
-        <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;">
-            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;"><?php echo $stat_icons[$key] ?? '📊'; ?> <?php echo ucfirst($key); ?></div>
+        $stat_icons = ['plugins' => '📦', 'pages' => '📄', 'posts' => '📝', 'users' => '👥', 'comments' => '💬', 'products' => '🛍️', 'orders' => '📦', 'tokens' => '🪙'];
+        foreach ($stats as $key => $val):
+            $stat_data = $clickable_stats[$key] ?? [];
+            $url = $stat_data['url'] ?? '#';
+            $label = $stat_data['label'] ?? ucfirst($key);
+            $drilldown = $stat_data['drilldown'] ?? [];
+        ?>
+        <a href="<?php echo esc_url($url); ?>" style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-decoration:none;display:block;transition:all 0.2s ease;cursor:pointer;" 
+           onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';this.style.borderColor='#6366f1';" 
+           onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none';this.style.borderColor='#e5e7eb';">
+            <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;justify-content:space-between;">
+                <span><?php echo $stat_icons[$key] ?? '📊'; ?> <?php echo esc_html($label); ?></span>
+                <?php if ($url !== '#'): ?>
+                <span style="color:#6366f1;font-size:10px;">→</span>
+                <?php endif; ?>
+            </div>
             <div style="font-size:28px;font-weight:700;color:#111827;margin-top:4px;"><?php echo number_format($val); ?></div>
-        </div>
+            
+            <?php if (!empty($drilldown)): ?>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;">
+                <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Recent</div>
+                <?php foreach (array_slice($drilldown, 0, 2) as $item): ?>
+                <div style="font-size:10px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?php echo esc_html($item['title'] ?? $item['name'] ?? $item['email'] ?? ''); ?>">
+                    • <?php echo esc_html($item['title'] ?? $item['name'] ?? $item['email'] ?? ''); ?>
+                </div>
+                <?php endforeach; ?>
+                <?php if (count($drilldown) > 2): ?>
+                <div style="font-size:10px;color:#6366f1;font-weight:500;">+<?php echo count($drilldown) - 2; ?> meer</div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </a>
         <?php endforeach; ?>
 
-        <!-- Token balance -->
-        <div style="background:linear-gradient(135deg,#6366f1,#9333ea);border-radius:12px;padding:16px;color:white;">
-            <div style="font-size:11px;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;">🪙 Tokens</div>
-            <div style="font-size:28px;font-weight:700;margin-top:4px;"><?php echo number_format($balance['balance']); ?></div>
-            <div style="font-size:11px;opacity:0.7;margin-top:2px;"><?php echo esc_html($balance['tier_label'] ?? $balance['tier']); ?></div>
+        <!-- Token balance special card -->
+        <div style="background:linear-gradient(135deg,#6366f1,#9333ea);border-radius:12px;padding:16px;color:white;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:-10px;right:-10px;width:60px;height:60px;background:rgba(255,255,255,0.1);border-radius:50%;"></div>
+            <div style="font-size:11px;opacity:0.8;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;justify-content:space-between;">
+                <span>🪙 Tokens</span>
+                <a href="<?php echo admin_url('admin.php?page=tinyeclipse-tokens'); ?>" style="color:white;text-decoration:none;font-size:10px;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Beheren</a>
+            </div>
+            <div style="font-size:28px;font-weight:700;margin-top:4px;position:relative;z-index:1;"><?php echo number_format($balance['balance']); ?></div>
+            <div style="font-size:11px;opacity:0.7;margin-top:2px;position:relative;z-index:1;"><?php echo esc_html($token_tier); ?></div>
         </div>
     </div>
 

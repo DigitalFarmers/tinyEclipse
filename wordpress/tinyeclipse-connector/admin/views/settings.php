@@ -159,6 +159,54 @@ $connection_status = $connected ? 'connected' : 'disconnected';
         <?php submit_button('Opslaan', 'primary', 'submit', true, ['style' => 'padding:8px 24px;']); ?>
     </form>
 
+    <!-- Knowledge Base Status -->
+    <?php if ($connected): ?>
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:16px;">
+        <h2 style="margin:0 0 16px;font-size:16px;">🧠 Knowledge Base Status</h2>
+        
+        <?php 
+        $last_sync = get_option('tinyeclipse_last_knowledge_sync', null);
+        $products_count = wp_count_posts('product')->publish ?? 0;
+        $has_woocommerce = class_exists('WooCommerce');
+        $has_acf = function_exists('get_field');
+        ?>
+        
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;">
+            <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:8px;">
+                <div style="font-size:24px;font-weight:700;color:#6366f1;"><?php echo $products_count; ?></div>
+                <div style="font-size:12px;color:#6b7280;">Producten</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:8px;">
+                <div style="font-size:24px;font-weight:700;color:#6366f1;"><?php echo $has_woocommerce ? '✅' : '❌'; ?></div>
+                <div style="font-size:12px;color:#6b7280;">WooCommerce</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:8px;">
+                <div style="font-size:24px;font-weight:700;color:#6366f1;"><?php echo $has_acf ? '✅' : '❌'; ?></div>
+                <div style="font-size:12px;color:#6b7280;">ACF</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:8px;">
+                <div style="font-size:24px;font-weight:700;color:#6366f1;"><?php echo $last_sync ? '✅' : '⏳'; ?></div>
+                <div style="font-size:12px;color:#6b7280;">Sync Status</div>
+            </div>
+        </div>
+        
+        <div style="margin-bottom:16px;">
+            <div style="font-size:13px;color:#374151;margin-bottom:4px;">
+                <strong>Laatste sync:</strong> <?php echo $last_sync ? tinyeclipse_format_datetime(strtotime($last_sync)) : 'Nooit gesynchroniseerd'; ?>
+            </div>
+            <div style="font-size:13px;color:#374151;">
+                <strong>Auto-sync:</strong> <?php echo get_option('tinyeclipse_auto_knowledge_sync', true) ? 'Ingeschakeld (elke uur)' : 'Uitgeschakeld'; ?>
+            </div>
+        </div>
+        
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="teSyncKnowledge()" class="button button-primary">🔄 Nu Synchroniseren</button>
+            <button onclick="window.open('<?php echo admin_url('admin.php?page=tinyeclipse-logs'); ?>', '_blank')" class="button">📋 Sync Logs</button>
+            <button onclick="window.open('<?php echo esc_url(TINYECLIPSE_HUB_URL); ?>/knowledge/<?php echo esc_attr($site_id); ?>', '_blank')" class="button">🧠 Knowledge Base</button>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Embed Code -->
     <?php if ($site_id): ?>
     <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:16px;">
@@ -176,3 +224,32 @@ $connection_status = $connected ? 'connected' : 'disconnected';
 
     <p style="text-align:center;margin-top:24px;color:#9ca3af;font-size:11px;">TinyEclipse v<?php echo TINYECLIPSE_VERSION; ?> — <a href="<?php echo esc_url(TINYECLIPSE_HUB_URL); ?>" target="_blank" style="color:#6366f1;">Eclipse HUB</a></p>
 </div>
+<script>
+function teSyncKnowledge() {
+    if (!confirm('Knowledge base synchroniseren? Dit kan even duren...')) return;
+    
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Bezig...';
+    btn.disabled = true;
+    
+    jQuery.post(tinyeclipse.ajax_url, {
+        action: 'tinyeclipse_manual_knowledge_sync',
+        nonce: tinyeclipse.nonce
+    }, function(r) {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        
+        if (r.success) {
+            alert('✅ ' + r.data.message + '\n\nProducten gesynchroniseerd: ' + (r.data.products_synced || 0));
+            location.reload();
+        } else {
+            alert('❌ ' + (r.data?.message || 'Sync mislukt'));
+        }
+    }).fail(function() {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        alert('❌ Verbinding fout. Probeer opnieuw.');
+    });
+}
+</script>

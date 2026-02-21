@@ -191,4 +191,82 @@ class TinyEclipse_Translation {
             'url'     => get_permalink($post->ID),
         ];
     }
+    
+    /**
+     * Publish translation directly without WPML draft workflow.
+     */
+    public function publish_translation_directly($post_id, $target_lang, $translated_title, $translated_content) {
+        if (!function_exists('icl_get_languages')) {
+            return ['success' => false, 'message' => 'WPML not active'];
+        }
+        
+        $original_post = get_post($post_id);
+        if (!$original_post) {
+            return ['success' => false, 'message' => 'Original post not found'];
+        }
+        
+        // Get translation ID or create new
+        $trid = apply_filters('wpml_element_trid', null, $post_id, 'post_' . $original_post->post_type);
+        $translations = apply_filters('wpml_get_element_translations', null, $trid, 'post_' . $original_post->post_type);
+        
+        $translation_id = null;
+        if ($translations && isset($translations[$target_lang]) && !empty($translations[$target_lang]->element_id)) {
+            $translation_id = $translations[$target_lang]->element_id;
+        }
+        
+        // Create or update translation
+        if ($translation_id) {
+            // Update existing translation
+            wp_update_post([
+                'ID' => $translation_id,
+                'post_title' => $translated_title,
+                'post_content' => $translated_content,
+                'post_status' => 'publish', // Direct publish, not draft
+                'post_excerpt' => $original_post->post_excerpt,
+                'post_type' => $original_post->post_type,
+            ]);
+        } else {
+            // Create new translation
+            $translation_id = wp_insert_post([
+                'post_title' => $translated_title,
+                'post_content' => $translated_content,
+                'post_status' => 'publish', // Direct publish, not draft
+                'post_excerpt' => $original_post->post_excerpt,
+                'post_type' => $original_post->post_type,
+                'post_author' => $original_post->post_author,
+            ]);
+            
+            // Link with WPML
+            if ($translation_id && function_exists('wpml_set_element_language_details')) {
+                $args = [
+                    'element_id' => $translation_id,
+                    'element_type' => 'post_' . $original_post->post_type,
+                    'trid' => $trid,
+                    'language_code' => $target_lang,
+                    'source_language_code' => apply_filters('wpml_default_language', null),
+                ];
+                wpml_set_element_language_details($args);
+            }
+        }
+        
+        if ($translation_id) {
+            // Log the translation
+            tinyeclipse_log('translation', 'info', "Translation published directly", [
+                'original_id' => $post_id,
+                'translation_id' => $translation_id,
+                'target_lang' => $target_lang,
+                'direct_publish' => true
+            ]);
+            
+            return [
+                'success' => true,
+                'message' => '✅ Vertaling direct gepubliceerd!',
+                'translation_id' => $translation_id,
+                'edit_url' => get_edit_post_link($translation_id),
+                'view_url' => get_permalink($translation_id)
+            ];
+        }
+        
+        return ['success' => false, 'message' => 'Failed to create translation'];
+    }
 }

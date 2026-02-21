@@ -55,16 +55,32 @@ class TinyEclipse_Mail {
             'connections' => $smtp_config,
         ];
 
-        // 3. From email
-        $admin_email = get_option('admin_email', '');
-        $from_email = $admin_email;
-        if (class_exists('WooCommerce')) {
-            $from_email = get_option('woocommerce_email_from_address', $admin_email);
+        // 3. From email - Use configured SMTP sender, not admin email
+        $from_email = null;
+        $from_name = null;
+        
+        if (!empty($smtp_config)) {
+            // Use the first SMTP connection's sender info
+            $first_connection = reset($smtp_config);
+            $from_email = $first_connection['from_email'] ?? null;
+            $from_name = $first_connection['from_name'] ?? null;
         }
+        
+        // Fallback to admin email only if no SMTP config
+        if (empty($from_email)) {
+            $admin_email = get_option('admin_email', '');
+            $from_email = $admin_email;
+            if (class_exists('WooCommerce')) {
+                $from_email = get_option('woocommerce_email_from_address', $admin_email);
+            }
+        }
+        
         $checks['from_email'] = [
             'label'  => 'From Email',
             'status' => !empty($from_email) && strpos($from_email, '@') !== false ? 'pass' : 'warn',
             'detail' => $from_email ?: '(not set)',
+            'from_name' => $from_name,
+            'is_smtp_configured' => !empty($smtp_config)
         ];
 
         // 4. SPF/DKIM (basic check via domain)
@@ -84,8 +100,9 @@ class TinyEclipse_Mail {
             'score'       => $score,
             'smtp_active' => !empty($active_smtp),
             'smtp_plugin' => $active_smtp,
-            'admin_email' => $admin_email,
+            'admin_email' => get_option('admin_email', ''),
             'from_email'  => $from_email,
+            'from_name'   => $from_name,
             'checks'      => $checks,
             'scanned_at'  => current_time('c'),
         ];
@@ -135,6 +152,8 @@ class TinyEclipse_Mail {
             'smtp_connections' => $audit['checks']['smtp_config']['connections'] ?? [],
             'admin_email'      => $audit['admin_email'],
             'from_email'       => $audit['from_email'],
+            'from_name'        => $audit['from_name'] ?? null,
+            'is_smtp_configured' => $audit['checks']['from_email']['is_smtp_configured'] ?? false,
             'site_name'        => get_bloginfo('name'),
             'score'            => $audit['score'],
         ];

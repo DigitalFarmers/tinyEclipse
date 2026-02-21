@@ -649,6 +649,164 @@ class TinyEclipse_REST_API {
         ]);
 
         // ═══════════════════════════════════════════════════════════════
+        // SECURITY FIXES AUTOMATION
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/security/fix', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $fix_type = $request->get_param('fix_type');
+                $auto_confirm = $request->get_param('auto_confirm');
+                
+                // Token costs for each fix
+                $token_costs = [
+                    'disable_xmlrpc' => 50,
+                    'add_security_headers' => 75,
+                    'fix_db_prefix' => 100,
+                    'fix_wp_config_permissions' => 50,
+                    'update_plugins' => 25,
+                ];
+                
+                $cost = $token_costs[$fix_type] ?? 0;
+                
+                // Check token balance
+                $balance = tinyeclipse_get_token_balance();
+                if ($balance['balance'] < $cost) {
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => "Onvoldoende tokens. Je hebt {$balance['balance']} tokens, maar {$cost} tokens nodig.",
+                        'required_tokens' => $cost,
+                        'current_balance' => $balance['balance']
+                    ], 402);
+                }
+                
+                // Execute fix
+                $result = TinyEclipse_Security::instance()->execute_fix($fix_type);
+                
+                if ($result['success']) {
+                    // Deduct tokens
+                    tinyeclipse_deduct_tokens($cost, "security_fix: {$fix_type}");
+                    
+                    // Log the fix
+                    tinyeclipse_log('security', 'info', "Security fix applied: {$fix_type}", [
+                        'cost' => $cost,
+                        'user' => get_current_user_id(),
+                        'auto_confirm' => $auto_confirm
+                    ]);
+                }
+                
+                return new WP_REST_Response($result, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/test/email', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $to = $request->get_param('to') ?? get_option('admin_email');
+                $subject = 'TinyEclipse Test Email';
+                $message = "Dit is een test email van TinyEclipse.\n\nVerstuurd: " . tinyeclipse_format_datetime() . "\nSite: " . get_bloginfo('name') . "\nURL: " . get_home_url();
+                
+                $sent = wp_mail($to, $subject, $message);
+                
+                return new WP_REST_Response([
+                    'success' => $sent,
+                    'message' => $sent ? 'Test email verzonden!' : 'Fout bij verzenden',
+                    'to' => $to,
+                    'sent_at' => tinyeclipse_format_datetime()
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
+        // KNOWLEDGE BASE & AI INTELLIGENCE
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/knowledge/products', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $intelligence = TinyEclipse_Collector::instance()->collect_product_intelligence();
+                return new WP_REST_Response($intelligence, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/knowledge/hours', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $hours = TinyEclipse_Collector::instance()->collect_opening_hours();
+                return new WP_REST_Response($hours, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/knowledge/sync', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $force = $request->get_param('force') ?? false;
+                
+                // Collect all knowledge data
+                $data = [
+                    'tenant_id' => tinyeclipse_get_tenant_id(),
+                    'site_url' => get_site_url(),
+                    'synced_at' => current_time('c'),
+                    'products' => TinyEclipse_Collector::instance()->collect_product_intelligence(),
+                    'opening_hours' => TinyEclipse_Collector::instance()->collect_opening_hours(),
+                    'site_content' => TinyEclipse_Collector::instance()->collect_all(),
+                ];
+                
+                // Send to Hub
+                $response = wp_remote_post(TINYECLIPSE_API_BASE . '/api/knowledge/sync', [
+                    'timeout' => 30,
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'Authorization' => 'Bearer ' . get_option('tinyeclipse_hub_api_key', ''),
+                        'X-Tenant-Id' => tinyeclipse_get_tenant_id(),
+                    ],
+                    'body' => wp_json_encode($data)
+                ]);
+                
+                if (is_wp_error($response)) {
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => 'Sync failed: ' . $response->get_error_message()
+                    ], 500);
+                }
+                
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                
+                // Update last sync
+                update_option('tinyeclipse_last_knowledge_sync', current_time('mysql'));
+                
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Knowledge sync completed',
+                    'synced_at' => current_time('c'),
+                    'hub_response' => $body
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/knowledge/status', [
+            'methods' => 'GET',
+            'callback' => function () {
+                return new WP_REST_Response([
+                    'last_sync' => get_option('tinyeclipse_last_knowledge_sync', null),
+                    'products_count' => wp_count_posts('product')->publish ?? 0,
+                    'pages_count' => wp_count_posts('page')->publish ?? 0,
+                    'posts_count' => wp_count_posts('post')->publish ?? 0,
+                    'has_woocommerce' => class_exists('WooCommerce'),
+                    'has_acf' => function_exists('get_field'),
+                    'auto_sync_enabled' => get_option('tinyeclipse_auto_knowledge_sync', true),
+                    'sync_interval' => get_option('tinyeclipse_knowledge_sync_interval', 'hourly'),
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
         // ALLOW ADD-ON PLUGINS TO REGISTER EXTRA ROUTES
         // ═══════════════════════════════════════════════════════════════
 

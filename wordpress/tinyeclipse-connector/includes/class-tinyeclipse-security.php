@@ -209,6 +209,162 @@ class TinyEclipse_Security {
     }
 
     /**
+     * Execute specific security fix with rollback support.
+     */
+    public function execute_fix($fix_type) {
+        global $wpdb;
+        
+        // Create rollback point before applying fix
+        $rollback_id = $this->create_rollback_point($fix_type);
+        
+        switch ($fix_type) {
+            case 'disable_xmlrpc':
+                return $this->fix_disable_xmlrpc($rollback_id);
+                
+            case 'add_security_headers':
+                return $this->fix_add_security_headers($rollback_id);
+                
+            case 'fix_db_prefix':
+                return $this->fix_db_prefix($rollback_id);
+                
+            case 'fix_wp_config_permissions':
+                return $this->fix_wp_config_permissions($rollback_id);
+                
+            case 'update_plugins':
+                return $this->fix_update_plugins($rollback_id);
+                
+            default:
+                return ['success' => false, 'message' => 'Onbekende fix type: ' . $fix_type];
+        }
+    }
+    
+    /**
+     * Create rollback point for security fix.
+     */
+    private function create_rollback_point($fix_type) {
+        global $wpdb;
+        
+        $rollback_id = uniqid('rollback_', true);
+        
+        // Store rollback info
+        $wpdb->insert($wpdb->prefix . 'tinyeclipse_rollback_points', [
+            'rollback_id' => $rollback_id,
+            'fix_type' => $fix_type,
+            'backup_data' => wp_json_encode([
+                'timestamp' => current_time('mysql'),
+                'user_id' => get_current_user_id(),
+                'site_url' => get_home_url()
+            ]),
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days')),
+            'created_at' => current_time('mysql')
+        ]);
+        
+        return $rollback_id;
+    }
+    
+    /**
+     * Fix: Disable XML-RPC
+     */
+    private function fix_disable_xmlrpc($rollback_id) {
+        // Backup current state
+        $htaccess = ABSPATH . '.htaccess';
+        $backup_content = file_exists($htaccess) ? file_get_contents($htaccess) : '';
+        
+        // Store backup
+        update_option("tinyeclipse_backup_{$rollback_id}", $backup_content);
+        
+        // Apply fix
+        $content = $backup_content;
+        $xmlrpc_block = "\n# TinyEclipse: Disable XML-RPC\n<Files xmlrpc.php>\nOrder Deny,Allow\nDeny from all\n</Files>\n";
+        
+        if (strpos($content, '# TinyEclipse: Disable XML-RPC') === false) {
+            file_put_contents($htaccess, $content . $xmlrpc_block);
+        }
+        
+        return [
+            'success' => true,
+            'message' => '✅ XML-RPC uitgeschakeld',
+            'rollback_id' => $rollback_id,
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days'))
+        ];
+    }
+    
+    /**
+     * Fix: Add Security Headers
+     */
+    private function fix_add_security_headers($rollback_id) {
+        $htaccess = ABSPATH . '.htaccess';
+        $backup_content = file_exists($htaccess) ? file_get_contents($htaccess) : '';
+        
+        // Store backup
+        update_option("tinyeclipse_backup_{$rollback_id}", $backup_content);
+        
+        // Apply fix
+        $content = $backup_content;
+        $headers = "\n# TinyEclipse: Security Headers\n<IfModule mod_headers.c>\nHeader set X-Content-Type-Options \"nosniff\"\nHeader set X-Frame-Options \"SAMEORIGIN\"\nHeader set X-XSS-Protection \"1; mode=block\"\nHeader set Referrer-Policy \"strict-origin-when-cross-origin\"\n</IfModule>\n";
+        
+        if (strpos($content, '# TinyEclipse: Security Headers') === false) {
+            file_put_contents($htaccess, $content . $headers);
+        }
+        
+        return [
+            'success' => true,
+            'message' => '✅ Security headers toegevoegd',
+            'rollback_id' => $rollback_id,
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days'))
+        ];
+    }
+    
+    /**
+     * Fix: Update Plugins
+     */
+    private function fix_update_plugins($rollback_id) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        
+        // Get plugins that need updating
+        $update_plugins = get_site_transient('update_plugins');
+        $plugins_to_update = [];
+        
+        if ($update_plugins && !empty($update_plugins->response)) {
+            foreach ($update_plugins->response as $plugin_file => $plugin_data) {
+                $plugins_to_update[] = $plugin_file;
+            }
+        }
+        
+        if (empty($plugins_to_update)) {
+            return ['success' => false, 'message' => 'Geen plugins die geüpdatet hoeven te worden'];
+        }
+        
+        // Store backup info
+        update_option("tinyeclipse_backup_{$rollback_id}", wp_json_encode([
+            'plugins_updated' => $plugins_to_update,
+            'current_versions' => array_map(function($file) {
+                $plugin_data = get_plugin_data(WP_PLUGIN_DIR . '/' . $file);
+                return $plugin_data['Version'];
+            }, $plugins_to_update)
+        ]));
+        
+        // Update plugins
+        $upgrader = new Plugin_Upgrader();
+        $results = [];
+        
+        foreach ($plugins_to_update as $plugin) {
+            $result = $upgrader->upgrade($plugin);
+            $results[$plugin] = $result;
+        }
+        
+        return [
+            'success' => true,
+            'message' => '✅ ' . count($plugins_to_update) . ' plugins bijgewerkt',
+            'rollback_id' => $rollback_id,
+            'updated_plugins' => $plugins_to_update,
+            'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days'))
+        ];
+    }
+
+    /**
      * Store audit results in DB.
      */
     public function save_audit($audit) {

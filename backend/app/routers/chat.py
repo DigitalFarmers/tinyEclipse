@@ -3,14 +3,17 @@
 
 INPUT → RETRIEVAL → RESPONSE → CONFIDENCE → LOG → ESCALATE
 """
+import re
 import uuid
+import hashlib
 from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from user_agents import parse as parse_ua
 
 from app.database import get_db
 from app.middleware.rate_limit import limiter
@@ -36,6 +39,98 @@ from app.models.lead import Lead
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
+def _extract_visitor_fingerprint(request: Request) -> dict:
+    """Extract visitor identity from HTTP request headers."""
+    ua_string = request.headers.get("user-agent", "")
+    ua = parse_ua(ua_string)
+
+    # Get real IP (behind proxy/cloudflare)
+    ip = (
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("x-real-ip")
+        or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or request.client.host if request.client else "unknown"
+    )
+
+    # Device type
+    if ua.is_mobile:
+        device = "mobile"
+    elif ua.is_tablet:
+        device = "tablet"
+    else:
+        device = "desktop"
+
+    # Language from Accept-Language header
+    accept_lang = request.headers.get("accept-language", "")
+    language = accept_lang.split(",")[0].split("-")[0].strip()[:2] if accept_lang else None
+
+    return {
+        "ip": ip,
+        "device": device,
+        "browser": f"{ua.browser.family} {ua.browser.version_string}".strip(),
+        "os": f"{ua.os.family} {ua.os.version_string}".strip(),
+        "language": language,
+        "ua_string": ua_string[:200],
+        "ip_hash": hashlib.sha256(ip.encode()).hexdigest()[:16] if ip else None,
+    }
+
+
+def _extract_identity_from_dialog(messages: list) -> dict:
+    """Try to extract visitor name/email from conversation content."""
+    identity = {}
+    for msg in messages:
+        if msg.get("role") != "user":
+            continue
+        text = msg.get("content", "")
+
+        # Email detection
+        email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', text)
+        if email_match:
+            identity["email"] = email_match.group(0).lower()
+
+        # Name detection (common patterns)
+        name_patterns = [
+            r'(?:ik ben|mijn naam is|je spreekt met|dit is|ik heet)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
+            r'(?:my name is|i am|this is)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
+            r'(?:je parle avec|je suis|mon nom est)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
+        ]
+        for pattern in name_patterns:
+            name_match = re.search(pattern, text, re.IGNORECASE)
+            if name_match:
+                identity["name"] = name_match.group(1).strip()
+                break
+
+        # Phone detection
+        phone_match = re.search(r'(?:\+32|0)\s*\d[\d\s]{7,}', text)
+        if phone_match:
+            identity["phone"] = re.sub(r'\s+', '', phone_match.group(0))
+
+    return identity
+
+
+async def _match_visitor_to_contact(db: AsyncSession, tenant_id: uuid.UUID, fingerprint: dict, dialog_identity: dict) -> Contact | None:
+    """Try to match visitor to existing contact using email, phone, or IP history."""
+    email = dialog_identity.get("email")
+    phone = dialog_identity.get("phone")
+
+    if not email and not phone:
+        return None
+
+    conditions = []
+    if email:
+        conditions.append(Contact.email == email)
+    if phone:
+        conditions.append(Contact.phone == phone)
+
+    result = await db.execute(
+        select(Contact)
+        .where(Contact.tenant_id == tenant_id)
+        .where(or_(*conditions))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 class ChatRequest(BaseModel):
@@ -98,15 +193,30 @@ async def chat(
     )
     conversation = conv_result.scalar_one_or_none()
 
+    # ─── Visitor Fingerprinting ───
+    fingerprint = _extract_visitor_fingerprint(request)
+
     if not conversation:
         conversation = Conversation(
             id=uuid.uuid4(),
             tenant_id=tenant_uuid,
             session_id=body.session_id,
             channel=body.channel,
+            visitor_ip=fingerprint.get("ip"),
+            visitor_device=fingerprint.get("device"),
+            visitor_browser=fingerprint.get("browser"),
+            visitor_language=fingerprint.get("language"),
+            visitor_identity=fingerprint,
         )
         db.add(conversation)
         await db.flush()
+    elif not conversation.visitor_ip and fingerprint.get("ip"):
+        # Update fingerprint if missing on existing conversation
+        conversation.visitor_ip = fingerprint.get("ip")
+        conversation.visitor_device = fingerprint.get("device")
+        conversation.visitor_browser = fingerprint.get("browser")
+        conversation.visitor_language = fingerprint.get("language")
+        conversation.visitor_identity = fingerprint
 
     # ─── Store user message ───
     user_msg = Message(
@@ -321,6 +431,35 @@ async def chat(
         tokens_in=llm_result["tokens_in"],
         tokens_out=llm_result["tokens_out"],
     )
+
+    # ─── [5b] IDENTITY: Extract from dialog and match to contact ───
+    try:
+        dialog_identity = _extract_identity_from_dialog(conversation_history + [{"role": "user", "content": body.message}])
+        if dialog_identity:
+            if dialog_identity.get("name") and not conversation.visitor_name:
+                conversation.visitor_name = dialog_identity["name"]
+            if dialog_identity.get("email") and not conversation.visitor_email:
+                conversation.visitor_email = dialog_identity["email"]
+
+            # Try to match to existing contact
+            if not conversation.contact_id:
+                contact = await _match_visitor_to_contact(db, tenant_uuid, fingerprint, dialog_identity)
+                if contact:
+                    conversation.contact_id = contact.id
+                    conversation.visitor_name = conversation.visitor_name or contact.name
+                    conversation.visitor_email = conversation.visitor_email or contact.email
+                    conversation.visitor_city = conversation.visitor_city or contact.city
+                    conversation.visitor_country = conversation.visitor_country or contact.country
+                    # Update contact stats
+                    contact.total_conversations = (contact.total_conversations or 0) + 1
+                    contact.last_seen_at = datetime.utcnow()
+
+            # Update identity blob
+            current_identity = conversation.visitor_identity or {}
+            current_identity.update({k: v for k, v in dialog_identity.items() if v})
+            conversation.visitor_identity = current_identity
+    except Exception:
+        pass  # Never break chat for identity extraction
 
     # ─── [6] ESCALATE: If needed ───
     if escalated:

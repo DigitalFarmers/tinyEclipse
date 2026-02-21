@@ -13,6 +13,14 @@ import {
   ChevronRight,
   X,
   Globe,
+  Smartphone,
+  Monitor,
+  Tablet,
+  Mail,
+  MapPin,
+  Languages,
+  UserCheck,
+  Link2,
 } from "lucide-react";
 import { getTenants, getConversations, getConversation } from "@/lib/api";
 
@@ -26,6 +34,15 @@ interface ConversationSummary {
   status: string;
   created_at: string;
   message_count: number;
+  visitor_name?: string | null;
+  visitor_email?: string | null;
+  visitor_ip?: string | null;
+  visitor_country?: string | null;
+  visitor_city?: string | null;
+  visitor_device?: string | null;
+  visitor_browser?: string | null;
+  visitor_language?: string | null;
+  contact_id?: string | null;
 }
 
 interface MessageDetail {
@@ -46,6 +63,16 @@ interface ConversationDetail {
   status: string;
   created_at: string;
   messages: MessageDetail[];
+  visitor_name?: string | null;
+  visitor_email?: string | null;
+  visitor_ip?: string | null;
+  visitor_country?: string | null;
+  visitor_city?: string | null;
+  visitor_device?: string | null;
+  visitor_browser?: string | null;
+  visitor_language?: string | null;
+  contact_id?: string | null;
+  visitor_identity?: Record<string, any> | null;
 }
 
 export default function ConversationsPage() {
@@ -97,9 +124,28 @@ export default function ConversationsPage() {
   const filtered = search
     ? conversations.filter(c =>
         tn(c.tenant_id).toLowerCase().includes(search.toLowerCase()) ||
-        c.session_id.toLowerCase().includes(search.toLowerCase())
+        c.session_id.toLowerCase().includes(search.toLowerCase()) ||
+        (c.visitor_name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.visitor_email || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.visitor_city || "").toLowerCase().includes(search.toLowerCase())
       )
     : conversations;
+
+  const DeviceIcon = ({ device }: { device?: string | null }) => {
+    if (device === "mobile") return <Smartphone className="h-3 w-3" />;
+    if (device === "tablet") return <Tablet className="h-3 w-3" />;
+    return <Monitor className="h-3 w-3" />;
+  };
+
+  const visitorLabel = (c: ConversationSummary) => {
+    if (c.visitor_name) return c.visitor_name;
+    if (c.visitor_email) return c.visitor_email.split("@")[0];
+    if (c.visitor_city && c.visitor_device) return `${c.visitor_city} · ${c.visitor_device}`;
+    if (c.visitor_ip) return `Bezoeker ${c.visitor_ip.split(".").slice(0, 2).join(".")}.**`;
+    return c.session_id.slice(0, 12) + "...";
+  };
+
+  const identifiedCount = conversations.filter(c => c.visitor_name || c.visitor_email || c.contact_id).length;
 
   const confColor = (c: number) => c >= 0.7 ? "text-green-400" : c >= 0.4 ? "text-yellow-400" : "text-red-400";
   const confBg = (c: number) => c >= 0.7 ? "bg-green-500" : c >= 0.4 ? "bg-yellow-500" : "bg-red-500";
@@ -207,16 +253,49 @@ export default function ConversationsPage() {
                     : c.status === "active" ? "bg-green-500/20 text-green-400"
                     : "bg-white/10 text-white/30"
                   }`}>{c.status}</span>
+                  {c.contact_id && (
+                    <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-bold text-purple-400">
+                      <UserCheck className="inline h-2.5 w-2.5 mr-0.5" />ID
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] text-white/20">{timeAgo(c.created_at)}</span>
               </div>
-              <div className="mt-1.5 flex items-center justify-between">
-                <p className="text-[11px] font-medium text-white/60 truncate">
-                  {c.session_id.slice(0, 12)}...
-                </p>
-                <span className="flex items-center gap-1 text-[10px] text-white/30">
-                  <MessageSquare className="h-2.5 w-2.5" /> {c.message_count}
-                </span>
+              <div className="mt-2 flex items-center gap-2">
+                <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${
+                  c.visitor_name || c.contact_id ? "bg-purple-500/10" : c.visitor_email ? "bg-blue-500/10" : "bg-white/5"
+                }`}>
+                  {c.visitor_name || c.contact_id ? (
+                    <UserCheck className="h-3.5 w-3.5 text-purple-400" />
+                  ) : (
+                    <User className="h-3.5 w-3.5 text-white/30" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-semibold text-white/80 truncate">
+                    {visitorLabel(c)}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {c.visitor_device && (
+                      <span className="flex items-center gap-0.5 text-[9px] text-white/25">
+                        <DeviceIcon device={c.visitor_device} /> {c.visitor_device}
+                      </span>
+                    )}
+                    {c.visitor_language && (
+                      <span className="flex items-center gap-0.5 text-[9px] text-white/25">
+                        <Languages className="h-2.5 w-2.5" /> {c.visitor_language.toUpperCase()}
+                      </span>
+                    )}
+                    {c.visitor_city && (
+                      <span className="flex items-center gap-0.5 text-[9px] text-white/25">
+                        <MapPin className="h-2.5 w-2.5" /> {c.visitor_city}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-0.5 text-[9px] text-white/25 ml-auto">
+                      <MessageSquare className="h-2.5 w-2.5" /> {c.message_count}
+                    </span>
+                  </div>
+                </div>
               </div>
             </button>
           ))}
@@ -227,30 +306,74 @@ export default function ConversationsPage() {
           {selected ? (
             <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
               {/* Detail Header */}
-              <div className="flex items-center justify-between border-b border-white/5 px-4 py-3 bg-white/[0.02]">
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                    selected.status === "escalated" ? "bg-red-500/10" : "bg-brand-500/10"
-                  }`}>
-                    <MessageSquare className={`h-4 w-4 ${selected.status === "escalated" ? "text-red-400" : "text-brand-400"}`} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold">{tn(selected.tenant_id)}</h3>
-                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                        selected.status === "escalated" ? "bg-red-500/20 text-red-400"
-                        : selected.status === "active" ? "bg-green-500/20 text-green-400"
-                        : "bg-white/10 text-white/30"
-                      }`}>{selected.status}</span>
+              <div className="border-b border-white/5 px-4 py-3 bg-white/[0.02]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                      selected.contact_id ? "bg-purple-500/10" : selected.status === "escalated" ? "bg-red-500/10" : "bg-brand-500/10"
+                    }`}>
+                      {selected.contact_id ? (
+                        <UserCheck className="h-4 w-4 text-purple-400" />
+                      ) : (
+                        <MessageSquare className={`h-4 w-4 ${selected.status === "escalated" ? "text-red-400" : "text-brand-400"}`} />
+                      )}
                     </div>
-                    <p className="text-[10px] text-white/30">
-                      {td(selected.tenant_id)} · {new Date(selected.created_at).toLocaleString("nl-BE")} · {selected.messages.length} berichten
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold">
+                          {selected.visitor_name || selected.visitor_email?.split("@")[0] || tn(selected.tenant_id)}
+                        </h3>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                          selected.status === "escalated" ? "bg-red-500/20 text-red-400"
+                          : selected.status === "active" ? "bg-green-500/20 text-green-400"
+                          : "bg-white/10 text-white/30"
+                        }`}>{selected.status}</span>
+                        {selected.contact_id && (
+                          <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-bold text-purple-400">
+                            Bekend contact
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-white/30">
+                        {td(selected.tenant_id)} · {new Date(selected.created_at).toLocaleString("nl-BE")} · {selected.messages.length} berichten
+                      </p>
+                    </div>
                   </div>
+                  <button onClick={() => setSelected(null)} className="rounded-lg p-1.5 text-white/30 transition hover:bg-white/5 hover:text-white">
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <button onClick={() => setSelected(null)} className="rounded-lg p-1.5 text-white/30 transition hover:bg-white/5 hover:text-white">
-                  <X className="h-4 w-4" />
-                </button>
+
+                {/* Visitor Identity Bar */}
+                {(selected.visitor_device || selected.visitor_email || selected.visitor_city || selected.visitor_language) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {selected.visitor_email && (
+                      <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">
+                        <Mail className="h-2.5 w-2.5" /> {selected.visitor_email}
+                      </span>
+                    )}
+                    {selected.visitor_city && (
+                      <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-400">
+                        <MapPin className="h-2.5 w-2.5" /> {selected.visitor_city}{selected.visitor_country ? `, ${selected.visitor_country.toUpperCase()}` : ""}
+                      </span>
+                    )}
+                    {selected.visitor_device && (
+                      <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/40">
+                        <DeviceIcon device={selected.visitor_device} /> {selected.visitor_browser || selected.visitor_device}
+                      </span>
+                    )}
+                    {selected.visitor_language && (
+                      <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/40">
+                        <Languages className="h-2.5 w-2.5" /> {selected.visitor_language.toUpperCase()}
+                      </span>
+                    )}
+                    {selected.visitor_ip && (
+                      <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/25">
+                        <Globe className="h-2.5 w-2.5" /> {selected.visitor_ip}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Messages */}

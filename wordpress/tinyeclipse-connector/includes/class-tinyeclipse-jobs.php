@@ -14,10 +14,52 @@ class TinyEclipse_Jobs {
         return self::$instance;
     }
 
-    private function __construct() {}
-
+    /**
+     * Check if WP Job Manager is active OR ACF-based jobs exist.
+     */
     public function is_active() {
-        return post_type_exists('job_listing');
+        // Check WP Job Manager
+        if (post_type_exists('job_listing')) {
+            return true;
+        }
+        
+        // Check ACF-based jobs (post_type 'job')
+        if (post_type_exists('job')) {
+            $job_posts = get_posts([
+                'post_type' => 'job',
+                'post_status' => 'publish',
+                'numberposts' => 1,
+                'fields' => 'ids'
+            ]);
+            return !empty($job_posts);
+        }
+        
+        // Check if ACF has job-related field groups
+        if (function_exists('acf_get_field_groups')) {
+            $field_groups = acf_get_field_groups();
+            foreach ($field_groups as $group) {
+                if (strpos(strtolower($group['title']), 'job') !== false || 
+                    strpos(strtolower($group['title']), 'vacature') !== false ||
+                    strpos(strtolower($group['title']), 'career') !== false) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get job post type (WP Job Manager or ACF-based).
+     */
+    private function get_job_post_type() {
+        if (post_type_exists('job_listing')) {
+            return 'job_listing';
+        }
+        if (post_type_exists('job')) {
+            return 'job';
+        }
+        return 'job_listing'; // fallback
     }
 
     /**
@@ -25,11 +67,12 @@ class TinyEclipse_Jobs {
      */
     public function audit() {
         if (!$this->is_active()) {
-            return ['active' => false, 'message' => 'WP Job Manager not installed'];
+            return ['active' => false, 'message' => 'No job system found (WP Job Manager or ACF jobs)'];
         }
 
+        $job_post_type = $this->get_job_post_type();
         $jobs = get_posts([
-            'post_type'   => 'job_listing',
+            'post_type'   => $job_post_type,
             'post_status' => ['publish', 'expired', 'draft', 'pending'],
             'numberposts' => 200,
             'orderby'     => 'date',

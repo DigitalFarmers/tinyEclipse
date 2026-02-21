@@ -91,6 +91,552 @@ function tinyeclipse_log($module, $level, $message, $context = []) {
     ]);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// UNIVERSAL DATE/TIME FORMATTING — All TinyEclipse sites use DD/MM/YYYY + 24u
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_format_date($timestamp = null) {
+    if ($timestamp === null) $timestamp = current_time('timestamp');
+    return date('d/m/Y', $timestamp);
+}
+
+function tinyeclipse_format_time($timestamp = null) {
+    if ($timestamp === null) $timestamp = current_time('timestamp');
+    return date('H:i', $timestamp);
+}
+
+function tinyeclipse_format_datetime($timestamp = null) {
+    if ($timestamp === null) $timestamp = current_time('timestamp');
+    return date('d/m/Y H:i', $timestamp);
+}
+
+// MySQL compatible versions for database storage
+function tinyeclipse_mysql_date($timestamp = null) {
+    if ($timestamp === null) $timestamp = current_time('timestamp');
+    return date('Y-m-d', $timestamp);
+}
+
+function tinyeclipse_mysql_datetime($timestamp = null) {
+    if ($timestamp === null) $timestamp = current_time('timestamp');
+    return date('Y-m-d H:i:s', $timestamp);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LANGUAGE DETECTION — Detect user language from question text
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_detect_language($text) {
+    $text = strtolower(trim($text));
+    
+    // French keywords
+    $french_keywords = ['bonjour', 'merci', 's\'il vous plaît', 'aujourd\'hui', 'commande', 'produit', 'livraison', 'bon', 'je', 'vous', 'le', 'la', 'est', 'dans', 'pour', 'avec', 'pas', 'une', 'des', 'du', 'que', 'qui', 'ce', 'se', 'ne', 'me', 'te', 'lui', 'leur', 'y', 'en', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles', 'mais', 'où', 'quand', 'comment', 'pourquoi', 'quel', 'quelle', 'quels', 'quelles'];
+    
+    // Dutch keywords  
+    $dutch_keywords = ['hallo', 'dank je', 'alsjeblieft', 'vandaag', 'bestelling', 'product', 'levering', 'goed', 'ik', 'jij', 'de', 'het', 'is', 'in', 'voor', 'met', 'niet', 'een', 'van', 'dat', 'die', 'dit', 'zal', 'kunnen', 'moeten', 'willen', 'mogen', 'hebben', 'zijn', 'worden', 'gaan', 'komen', 'zien', 'doen', 'laten', 'houden', 'geven', 'brengen', 'zeggen', 'worden', 'maken'];
+    
+    // English keywords
+    $english_keywords = ['hello', 'thank', 'please', 'today', 'order', 'product', 'delivery', 'good', 'i', 'you', 'the', 'is', 'in', 'for', 'with', 'not', 'a', 'that', 'this', 'will', 'can', 'must', 'want', 'may', 'have', 'are', 'be', 'go', 'come', 'see', 'do', 'let', 'keep', 'give', 'bring', 'say', 'become', 'make'];
+    
+    $scores = [
+        'fr' => 0,
+        'nl' => 0, 
+        'en' => 0
+    ];
+    
+    // Count keyword matches
+    $words = preg_split('/\s+/', $text);
+    foreach ($words as $word) {
+        if (in_array($word, $french_keywords)) $scores['fr']++;
+        if (in_array($word, $dutch_keywords)) $scores['nl']++;
+        if (in_array($word, $english_keywords)) $scores['en']++;
+    }
+    
+    // Check for specific language patterns
+    if (preg_match('/[àâäéèêëïîôöùûüÿç]/', $text)) $scores['fr'] += 2; // French accents
+    if (preg_match('/[áéíóúñü]/', $text)) $scores['nl'] += 1; // Dutch/Spanish patterns
+    if (preg_match('/[áéíóú]/', $text) && !preg_match('/ñ/', $text)) $scores['nl'] += 1; // Dutch without ñ
+    
+    // Return highest scoring language
+    arsort($scores);
+    $top_language = key($scores);
+    
+    // If no clear winner, default to site language
+    if ($scores[$top_language] == 0) {
+        return get_locale() === 'fr_FR' ? 'fr' : (get_locale() === 'nl_NL' ? 'nl' : 'en');
+    }
+    
+    return $top_language;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRODUCT ALLERGEN SCANNER — Check products for missing ingredient lists
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_scan_product_allergens() {
+    if (!class_exists('WooCommerce')) return [];
+    
+    $products = wc_get_products(['limit' => -1, 'status' => 'publish']);
+    $missing_allergens = [];
+    $allergen_keywords = [
+        'en' => ['allergens', 'ingredients', 'contains', 'may contain traces'],
+        'nl' => ['allergenen', 'ingredienten', 'bevat', 'kan sporen bevatten'],
+        'fr' => ['allergènes', 'ingrédients', 'contient', 'peut contenir des traces'],
+        'de' => ['allergene', 'zutaten', 'enthält', 'kann spuren von']
+    ];
+    
+    foreach ($products as $product) {
+        $description = $product->get_description() . ' ' . $product->get_short_description();
+        $has_allergen_info = false;
+        
+        // Check for allergen keywords in any language
+        foreach ($allergen_keywords as $lang => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (stripos($description, $keyword) !== false) {
+                    $has_allergen_info = true;
+                    break 2;
+                }
+            }
+        }
+        
+        // Also check for common allergens
+        $common_allergens = ['gluten', 'wheat', 'tarwe', 'blé', 'weizen', 'soy', 'soja', 'soja', 'soja', 'milk', 'melk', 'lait', 'milch', 'sesame', 'sesam', 'sésame', 'sesam', 'pistachio', 'pistache', 'pistache', 'pistazien', 'almond', 'amandel', 'amande', 'mandel', 'peanut', 'pinda', 'arachide', 'erdnuss', 'hazelnut', 'hazelnoot', 'noisette', 'haselnuss'];
+        
+        foreach ($common_allergens as $allergen) {
+            if (stripos($description, $allergen) !== false) {
+                $has_allergen_info = true;
+                break;
+            }
+        }
+        
+        if (!$has_allergen_info) {
+            $missing_allergens[] = [
+                'id' => $product->get_id(),
+                'name' => $product->get_name(),
+                'url' => get_edit_post_link($product->get_id()),
+                'sku' => $product->get_sku(),
+                'price' => $product->get_price(),
+                'stock' => $product->get_stock_status()
+            ];
+        }
+    }
+    
+    return $missing_allergens;
+}
+
+function tinyeclipse_get_product_allergen_report() {
+    $missing = tinyeclipse_scan_product_allergens();
+    $total_products = wc_get_products(['limit' => -1, 'status' => 'publish'])->count();
+    $missing_count = count($missing);
+    $compliance_rate = $total_products > 0 ? round((($total_products - $missing_count) / $total_products) * 100, 1) : 0;
+    
+    return [
+        'total_products' => $total_products,
+        'missing_allergens' => $missing_count,
+        'compliance_rate' => $compliance_rate,
+        'missing_products' => $missing,
+        'last_scan' => tinyeclipse_format_datetime()
+    ];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OPENING HOURS SCANNER — Index Google Business + ACF settings
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_get_opening_hours() {
+    $hours = [];
+    
+    // 1. Check ACF opening hours settings
+    if (function_exists('get_field')) {
+        $acf_hours = get_field('opening_hours', 'option');
+        if ($acf_hours) {
+            $hours['source'] = 'ACF Settings';
+            $hours['data'] = $acf_hours;
+            $hours['url'] = admin_url('options-general.php?page=opening-hours-settings');
+            return $hours;
+        }
+    }
+    
+    // 2. Check WordPress opening hours options
+    $wp_hours = get_option('opening_hours');
+    if ($wp_hours) {
+        $hours['source'] = 'WordPress Options';
+        $hours['data'] = $wp_hours;
+        $hours['url'] = admin_url('options-general.php?page=opening-hours-settings');
+        return $hours;
+    }
+    
+    // 3. Check Google Business data (if available via API or stored)
+    $google_hours = get_option('google_business_hours');
+    if ($google_hours) {
+        $hours['source'] = 'Google Business';
+        $hours['data'] = $google_hours;
+        $hours['url'] = 'https://business.google.com';
+        return $hours;
+    }
+    
+    // 4. Try to extract from site content/pages
+    $content_hours = tinyeclipse_extract_opening_hours_from_content();
+    if ($content_hours) {
+        $hours['source'] = 'Site Content';
+        $hours['data'] = $content_hours;
+        $hours['url'] = get_home_url();
+        return $hours;
+    }
+    
+    // 5. Default to standard Belgian business hours
+    $hours['source'] = 'Default (Belgian Business Hours)';
+    $hours['data'] = [
+        'monday' => '09:00 - 18:00',
+        'tuesday' => '09:00 - 18:00', 
+        'wednesday' => '09:00 - 18:00',
+        'thursday' => '09:00 - 18:00',
+        'friday' => '09:00 - 18:00',
+        'saturday' => '09:00 - 17:00',
+        'sunday' => 'gesloten'
+    ];
+    $hours['url'] = admin_url('options-general.php?page=opening-hours-settings');
+    
+    return $hours;
+}
+
+function tinyeclipse_extract_opening_hours_from_content() {
+    // Search for opening hours in pages/posts
+    $args = [
+        'post_type' => ['page', 'post'],
+        'post_status' => 'publish',
+        'posts_per_page' => 20,
+        's' => 'openingsuur'
+    ];
+    
+    $query = new WP_Query($args);
+    $hours_found = [];
+    
+    if ($query->have_posts()) {
+        while ($query->have_posts()) {
+            $query->the_post();
+            $content = get_the_content();
+            
+            // Look for common opening hour patterns
+            $patterns = [
+                '/(\w+dag)\s*:?\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/i',
+                '/(\w+dag)\s*:?\s*(gesloten|closed)/i',
+                '/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/i'
+            ];
+            
+            foreach ($patterns as $pattern) {
+                if (preg_match_all($pattern, $content, $matches)) {
+                    $hours_found = array_merge($hours_found, $matches[0]);
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+    
+    return !empty($hours_found) ? $hours_found : null;
+}
+
+function tinyeclipse_format_opening_hours_response($lang = 'nl') {
+    $hours = tinyeclipse_get_opening_hours();
+    $data = $hours['data'];
+    
+    if (!is_array($data)) {
+        return $data; // Return raw string if not array
+    }
+    
+    $days = [
+        'nl' => ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'],
+        'fr' => ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'],
+        'en' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    ];
+    
+    $response = "Openingstijden:\n";
+    $selected_days = $days[$lang] ?? $days['nl'];
+    
+    foreach ($selected_days as $index => $day) {
+        $day_key = strtolower($day);
+        $hours_text = isset($data[$day_key]) ? $data[$day_key] : (isset($data[$index]) ? $data[$index] : 'Niet beschikbaar');
+        $response .= ucfirst($day) . ": " . $hours_text . "\n";
+    }
+    
+    return $response;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ORDER LOOKUP + VERIFICATION — Auto-detect + unique verification
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_find_order_by_number($order_number) {
+    if (!class_exists('WooCommerce')) return null;
+    
+    // Try exact match first
+    $order = wc_get_order($order_number);
+    if ($order) return $order;
+    
+    // Try with # prefix
+    $order = wc_get_order(ltrim($order_number, '#'));
+    if ($order) return $order;
+    
+    // Search by order number in meta
+    $args = [
+        'post_type' => 'shop_order',
+        'post_status' => ['wc-completed', 'wc-processing', 'wc-pending', 'wc-on-hold'],
+        'posts_per_page' => 1,
+        'meta_query' => [
+            'relation' => 'OR',
+            ['key' => '_order_number', 'value' => $order_number],
+            ['key' => '_billing_order_number', 'value' => $order_number],
+        ]
+    ];
+    
+    $query = new WP_Query($args);
+    if ($query->have_posts()) {
+        return wc_get_order($query->posts[0]->ID);
+    }
+    
+    return null;
+}
+
+function tinyeclipse_generate_order_verification_question($order) {
+    if (!$order) return null;
+    
+    $order_id = $order->get_id();
+    $order_number = $order->get_order_number();
+    $billing_email = $order->get_billing_email();
+    $billing_phone = $order->get_billing_phone();
+    $billing_city = $order->get_billing_city();
+    $billing_postcode = $order->get_billing_postcode();
+    $order_date = $order->get_date_created();
+    $total = $order->get_total();
+    
+    // Generate unique verification questions
+    $questions = [];
+    
+    // 1. Amount + city
+    if ($total && $billing_city) {
+        $questions[] = "Wat was het totaalbedrag van €" . number_format($total, 2) . " en naar welke stad is de bestelling verzonden?";
+    }
+    
+    // 2. Order date + postcode
+    if ($order_date && $billing_postcode) {
+        $date = tinyeclipse_format_date($order_date->getTimestamp());
+        $questions[] = "Op welke datum (" . $date . ") is de bestelling geplaatst en wat is de eerste 2 cijfers van de postcode?";
+    }
+    
+    // 3. Last 4 digits of phone + product count
+    if ($billing_phone) {
+        $items_count = $order->get_items_count();
+        $phone_last4 = substr(preg_replace('/[^0-9]/', '', $billing_phone), -4);
+        $questions[] = "Wat zijn de laatste 4 cijfers van het telefoonnummer en hoeveel producten zijn er besteld (" . $items_count . ")?";
+    }
+    
+    // 4. Email domain + order number pattern
+    if ($billing_email) {
+        $domain = substr(strrchr($billing_email, "@"), 1);
+        $questions[] = "Wat is het domein van het e-mailadres en welk patroon heeft het bestelnummer (#" . $order_number . ")?";
+    }
+    
+    // Return random question
+    if (!empty($questions)) {
+        return $questions[array_rand($questions)];
+    }
+    
+    return "Kan u de bestelling bevestigen met de bestelnummer #" . $order_number . " en het e-mailadres dat gebruikt is?";
+}
+
+function tinyeclipse_get_order_summary_for_ai($order) {
+    if (!$order) return null;
+    
+    $items = [];
+    foreach ($order->get_items() as $item) {
+        $product = $item->get_product();
+        $items[] = [
+            'name' => $product->get_name(),
+            'quantity' => $item->get_quantity(),
+            'price' => $item->get_total(),
+            'sku' => $product->get_sku()
+        ];
+    }
+    
+    return [
+        'order_number' => $order->get_order_number(),
+        'status' => $order->get_status(),
+        'date' => tinyeclipse_format_date($order->get_date_created()->getTimestamp()),
+        'total' => $order->get_total(),
+        'customer' => [
+            'name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            'email' => $order->get_billing_email(),
+            'phone' => $order->get_billing_phone(),
+            'city' => $order->get_billing_city(),
+            'postcode' => $order->get_billing_postcode()
+        ],
+        'items' => $items,
+        'payment_method' => $order->get_payment_method_title(),
+        'shipping_method' => $order->get_shipping_method_title(),
+        'notes' => $order->get_customer_note()
+    ];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLICKABLE STATS & DRILL-DOWN — All stats clickable with detailed lists
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_get_clickable_stats() {
+    global $wpdb;
+    
+    $stats = [];
+    
+    // Basic WordPress stats
+    $stats['pages'] = [
+        'count' => wp_count_posts('page')->publish,
+        'label' => 'Pagina\'s',
+        'icon' => '📄',
+        'url' => admin_url('edit.php?post_type=page'),
+        'drilldown' => tinyeclipse_get_recent_pages(5)
+    ];
+    
+    $stats['posts'] = [
+        'count' => wp_count_posts('post')->publish,
+        'label' => 'Berichten',
+        'icon' => '📝',
+        'url' => admin_url('edit.php'),
+        'drilldown' => tinyeclipse_get_recent_posts(5)
+    ];
+    
+    $stats['users'] = [
+        'count' => count_users()['total_users'],
+        'label' => 'Gebruikers',
+        'icon' => '👥',
+        'url' => admin_url('users.php'),
+        'drilldown' => tinyeclipse_get_recent_users(5)
+    ];
+    
+    $stats['comments'] = [
+        'count' => wp_count_comments()->approved,
+        'label' => 'Reacties',
+        'icon' => '💬',
+        'url' => admin_url('edit-comments.php?comment_status=approved'),
+        'drilldown' => tinyeclipse_get_recent_comments(5)
+    ];
+    
+    // WooCommerce stats
+    if (class_exists('WooCommerce')) {
+        $stats['products'] = [
+            'count' => wp_count_posts('product')->publish,
+            'label' => 'Producten',
+            'icon' => '🛍️',
+            'url' => admin_url('edit.php?post_type=product'),
+            'drilldown' => tinyeclipse_get_recent_products(5)
+        ];
+        
+        $stats['orders'] = [
+            'count' => wp_count_posts('shop_order')->{'wc-completed'} ?? 0,
+            'label' => 'Bestellingen',
+            'icon' => '📦',
+            'url' => admin_url('edit.php?post_type=shop_order&post_status=wc-completed'),
+            'drilldown' => tinyeclipse_get_recent_orders(5)
+        ];
+    }
+    
+    // TinyEclipse specific stats
+    $stats['leads'] = [
+        'count' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tinyeclipse_leads"),
+        'label' => 'Leads',
+        'icon' => '🎯',
+        'url' => admin_url('admin.php?page=tinyeclipse-leads'),
+        'drilldown' => tinyeclipse_get_recent_leads(5)
+    ];
+    
+    $stats['forms'] = [
+        'count' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tinyeclipse_forms"),
+        'label' => 'Formulieren',
+        'icon' => '📝',
+        'url' => admin_url('admin.php?page=tinyeclipse-forms'),
+        'drilldown' => tinyeclipse_get_recent_form_submissions(5)
+    ];
+    
+    $stats['tokens'] = [
+        'count' => $wpdb->get_var("SELECT SUM(balance) FROM {$wpdb->prefix}tinyeclipse_tokens"),
+        'label' => 'Tokens',
+        'icon' => '🪙',
+        'url' => admin_url('admin.php?page=tinyeclipse-tokens'),
+        'drilldown' => tinyeclipse_get_token_balances(5)
+    ];
+    
+    return $stats;
+}
+
+// Drill-down helper functions
+function tinyeclipse_get_recent_pages($limit = 5) {
+    $pages = get_posts(['post_type' => 'page', 'numberposts' => $limit, 'orderby' => 'date', 'order' => 'DESC']);
+    $result = [];
+    foreach ($pages as $page) {
+        $result[] = [
+            'id' => $page->ID,
+            'title' => $page->post_title,
+            'url' => get_edit_post_link($page->ID),
+            'date' => tinyeclipse_format_date(strtotime($page->post_date)),
+            'status' => $page->post_status
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_recent_products($limit = 5) {
+    if (!class_exists('WooCommerce')) return [];
+    
+    $products = wc_get_products(['limit' => $limit, 'orderby' => 'date_created', 'order' => 'DESC']);
+    $result = [];
+    foreach ($products as $product) {
+        $result[] = [
+            'id' => $product->get_id(),
+            'name' => $product->get_name(),
+            'url' => get_edit_post_link($product->get_id()),
+            'price' => $product->get_price(),
+            'stock' => $product->get_stock_status(),
+            'date' => tinyeclipse_format_date($product->get_date_created()->getTimestamp())
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_recent_orders($limit = 5) {
+    if (!class_exists('WooCommerce')) return [];
+    
+    $orders = wc_get_orders(['limit' => $limit, 'orderby' => 'date_created', 'order' => 'DESC']);
+    $result = [];
+    foreach ($orders as $order) {
+        $result[] = [
+            'id' => $order->get_id(),
+            'number' => $order->get_order_number(),
+            'url' => admin_url('post.php?post=' . $order->get_id() . '&action=edit'),
+            'total' => $order->get_total(),
+            'status' => $order->get_status(),
+            'customer' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            'date' => tinyeclipse_format_date($order->get_date_created()->getTimestamp())
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_recent_leads($limit = 5) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'tinyeclipse_leads';
+    $leads = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} ORDER BY created_at DESC LIMIT %d", $limit));
+    
+    $result = [];
+    foreach ($leads as $lead) {
+        $result[] = [
+            'id' => $lead->id,
+            'email' => $lead->email,
+            'name' => $lead->name,
+            'phone' => $lead->phone,
+            'source' => $lead->source,
+            'date' => tinyeclipse_format_datetime(strtotime($lead->created_at))
+        ];
+    }
+    return $result;
+}
+
 function tinyeclipse_is_superadmin() {
     if (!is_user_logged_in()) return false;
     $user = wp_get_current_user();
@@ -372,6 +918,9 @@ register_activation_hook(__FILE__, function () {
     add_option('tinyeclipse_auto_report', true);
     add_option('tinyeclipse_log_retention', 30);
 
+    // Auto-onboarding - generate tenant ID and register with Hub
+    tinyeclipse_auto_onboard();
+
     // Migrate from eclipse_ai_* if exists
     tinyeclipse_migrate_from_eclipse_ai();
 
@@ -435,3 +984,120 @@ function tinyeclipse_migrate_from_eclipse_ai() {
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-ONBOARDING — Zero-config setup with automatic Hub registration
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_auto_onboard() {
+    // Only onboard once
+    if (get_option('tinyeclipse_onboarded', false)) {
+        return;
+    }
+
+    // Generate unique tenant ID
+    $tenant_id = wp_generate_uuid();
+    update_option('tinyeclipse_site_id', $tenant_id);
+    update_option('tinyeclipse_tenant_id', $tenant_id);
+
+    // Prepare fingerprint data
+    $fingerprint = [
+        'site_url' => get_site_url(),
+        'site_name' => get_bloginfo('name'),
+        'description' => get_bloginfo('description'),
+        'wp_version' => get_bloginfo('version'),
+        'php_version' => phpversion(),
+        'locale' => get_locale(),
+        'timezone' => wp_timezone_string(),
+        'environment' => tinyeclipse_is_staging() ? 'staging' : 'production',
+        'admin_email' => get_option('admin_email'),
+        'tenant_id' => $tenant_id,
+        'generated_at' => current_time('c'),
+        'connector_version' => TINYECLIPSE_VERSION
+    ];
+
+    // Detect plugins
+    $active_plugins = get_option('active_plugins', []);
+    $fingerprint['plugins'] = array_map(function($p) {
+        return explode('/', $p)[0];
+    }, $active_plugins);
+    
+    $fingerprint['plugin_count'] = count($active_plugins);
+    
+    // Detect modules
+    $modules = [];
+    if (class_exists('WooCommerce')) $modules[] = 'shop';
+    if (function_exists('icl_get_languages')) $modules[] = 'wpml';
+    if (function_exists('wpFluent') || in_array('fluentform', $fingerprint['plugins'])) $modules[] = 'forms';
+    if (in_array('wp-job-manager', $fingerprint['plugins'])) $modules[] = 'jobs';
+    if (in_array('fluent-smtp', $fingerprint['plugins']) || in_array('wp-mail-smtp', $fingerprint['plugins'])) $modules[] = 'mail';
+    if (in_array('wordpress-seo', $fingerprint['plugins']) || in_array('rank-math', $fingerprint['plugins'])) $modules[] = 'seo';
+    
+    $fingerprint['modules'] = $modules;
+
+    // Register with Hub
+    $response = wp_remote_post(TINYECLIPSE_API_BASE . '/api/sites/auto-onboard', [
+        'timeout' => 15,
+        'headers' => [
+            'Content-Type' => 'application/json',
+            'User-Agent' => 'TinyEclipse-Connector/' . TINYECLIPSE_VERSION
+        ],
+        'body' => wp_json_encode($fingerprint)
+    ]);
+
+    if (!is_wp_error($response)) {
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (!empty($body['success']) && !empty($body['api_key'])) {
+            // Store API key from Hub
+            update_option('tinyeclipse_hub_api_key', $body['api_key']);
+            update_option('tinyeclipse_hub_url', TINYECLIPSE_HUB_URL);
+            
+            // Mark as onboarded
+            update_option('tinyeclipse_onboarded', true);
+            update_option('tinyeclipse_onboarded_at', current_time('mysql'));
+            
+            // Log successful onboarding
+            tinyeclipse_log('onboarding', 'info', 'Auto-onboarding successful', [
+                'tenant_id' => $tenant_id,
+                'hub_response' => $body
+            ]);
+            
+            // Start heartbeat immediately
+            wp_schedule_single_event(time(), 'tinyeclipse_heartbeat_now');
+            
+        } else {
+            // Onboarding failed, but we have tenant ID
+            tinyeclipse_log('onboarding', 'warning', 'Auto-onboarding failed, using local mode', [
+                'tenant_id' => $tenant_id,
+                'response' => $body
+            ]);
+            update_option('tinyeclipse_onboarded', true); // Don't retry
+        }
+    } else {
+        // Network error
+        tinyeclipse_log('onboarding', 'error', 'Auto-onboarding network error', [
+            'tenant_id' => $tenant_id,
+            'error' => $response->get_error_message()
+        ]);
+        update_option('tinyeclipse_onboarded', true); // Don't retry
+    }
+}
+
+// Add immediate heartbeat action
+add_action('tinyeclipse_heartbeat_now', function() {
+    TinyEclipse_Hub::instance()->maybe_heartbeat();
+});
+
+// Schedule knowledge sync
+add_action('tinyeclipse_hourly_scan', function() {
+    // Auto-sync knowledge base every hour
+    if (get_option('tinyeclipse_auto_knowledge_sync', true)) {
+        TinyEclipse_Collector::instance()->sync_knowledge_to_hub();
+    }
+});
+
+// Add manual sync action
+add_action('tinyeclipse_manual_knowledge_sync', function() {
+    return TinyEclipse_Collector::instance()->sync_knowledge_to_hub(true);
+});
