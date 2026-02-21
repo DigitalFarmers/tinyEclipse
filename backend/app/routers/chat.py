@@ -13,7 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from user_agents import parse as parse_ua
+try:
+    from user_agents import parse as parse_ua
+except ImportError:
+    parse_ua = None
 
 from app.database import get_db
 from app.middleware.rate_limit import limiter
@@ -44,23 +47,40 @@ router = APIRouter(prefix="/api", tags=["chat"])
 def _extract_visitor_fingerprint(request: Request) -> dict:
     """Extract visitor identity from HTTP request headers."""
     ua_string = request.headers.get("user-agent", "")
-    ua = parse_ua(ua_string)
 
     # Get real IP (behind proxy/cloudflare)
     ip = (
         request.headers.get("cf-connecting-ip")
         or request.headers.get("x-real-ip")
         or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or request.client.host if request.client else "unknown"
+        or (request.client.host if request.client else "unknown")
     )
 
-    # Device type
-    if ua.is_mobile:
-        device = "mobile"
-    elif ua.is_tablet:
-        device = "tablet"
+    # Device & browser detection
+    device = "desktop"
+    browser = "Unknown"
+    os_name = "Unknown"
+    if parse_ua:
+        ua = parse_ua(ua_string)
+        if ua.is_mobile:
+            device = "mobile"
+        elif ua.is_tablet:
+            device = "tablet"
+        browser = f"{ua.browser.family} {ua.browser.version_string}".strip()
+        os_name = f"{ua.os.family} {ua.os.version_string}".strip()
     else:
-        device = "desktop"
+        # Fallback without user-agents library
+        ua_lower = ua_string.lower()
+        if "mobile" in ua_lower or "android" in ua_lower or "iphone" in ua_lower:
+            device = "mobile"
+        elif "tablet" in ua_lower or "ipad" in ua_lower:
+            device = "tablet"
+        if "chrome" in ua_lower:
+            browser = "Chrome"
+        elif "firefox" in ua_lower:
+            browser = "Firefox"
+        elif "safari" in ua_lower:
+            browser = "Safari"
 
     # Language from Accept-Language header
     accept_lang = request.headers.get("accept-language", "")
@@ -69,8 +89,8 @@ def _extract_visitor_fingerprint(request: Request) -> dict:
     return {
         "ip": ip,
         "device": device,
-        "browser": f"{ua.browser.family} {ua.browser.version_string}".strip(),
-        "os": f"{ua.os.family} {ua.os.version_string}".strip(),
+        "browser": browser,
+        "os": os_name,
         "language": language,
         "ua_string": ua_string[:200],
         "ip_hash": hashlib.sha256(ip.encode()).hexdigest()[:16] if ip else None,
