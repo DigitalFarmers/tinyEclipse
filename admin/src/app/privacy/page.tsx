@@ -1,22 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import Footer from "@/components/Footer";
 import { Lock, ArrowLeft } from "lucide-react";
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-      <Link href="/" className="mb-8 inline-flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
-        <ArrowLeft className="h-3 w-3" /> Terug
-      </Link>
+    <div className="min-h-screen">
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+        <Link href="/" className="mb-8 inline-flex items-center gap-2 text-xs text-white/40 hover:text-white/60">
+          <ArrowLeft className="h-3 w-3" /> Terug
+        </Link>
 
-      <div className="flex items-center gap-3">
-        <Lock className="h-6 w-6 text-brand-400" />
-        <h1 className="text-2xl font-bold">Privacybeleid</h1>
-      </div>
-      <p className="mt-2 text-sm text-white/40">Laatst bijgewerkt: 19 februari 2026</p>
+        <div className="flex items-center gap-3">
+          <Lock className="h-6 w-6 text-brand-400" />
+          <h1 className="text-2xl font-bold">Privacybeleid</h1>
+        </div>
+        <p className="mt-2 text-sm text-white/40">Laatst bijgewerkt: 19 februari 2026</p>
 
-      <div className="mt-8 space-y-8 text-sm leading-relaxed text-white/60">
+        <div className="mt-8 space-y-8 text-sm leading-relaxed text-white/60">
         <Section title="1. Wie zijn wij?">
           <p>Digital Farmers is de verwerkingsverantwoordelijke voor het TinyEclipse platform. Wij zijn gevestigd in België en bereikbaar via <a href="mailto:info@digitalfarmers.be" className="text-brand-400 hover:underline">info@digitalfarmers.be</a>.</p>
         </Section>
@@ -147,6 +149,9 @@ export default function PrivacyPage() {
           </p>
         </div>
       </div>
+      </div>
+
+      <Footer />
     </div>
   );
 }
