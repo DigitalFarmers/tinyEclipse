@@ -21,6 +21,12 @@ import {
   Languages,
   UserCheck,
   Link2,
+  Sparkles,
+  TrendingUp,
+  Tag,
+  Brain,
+  Phone,
+  Building2,
 } from "lucide-react";
 import { getTenants, getConversations, getConversation } from "@/lib/api";
 
@@ -73,6 +79,20 @@ interface ConversationDetail {
   visitor_language?: string | null;
   contact_id?: string | null;
   visitor_identity?: Record<string, any> | null;
+}
+
+function getConvStats(detail: ConversationDetail) {
+  const msgs = detail.messages || [];
+  const aiMsgs = msgs.filter(m => m.role === "assistant" && m.confidence !== null);
+  const avgConf = aiMsgs.length > 0 ? aiMsgs.reduce((s, m) => s + (m.confidence || 0), 0) / aiMsgs.length : 0;
+  const escalated = msgs.some(m => m.escalated);
+  const lowConf = aiMsgs.filter(m => (m.confidence || 0) < 0.4).length;
+  const summary = detail.visitor_identity?.conversation_summary;
+  const topics = summary?.topics || [];
+  const userMsgCount = msgs.filter(m => m.role === "user").length;
+  const phone = detail.visitor_identity?.phone;
+  const company = detail.visitor_identity?.company;
+  return { avgConf, escalated, lowConf, summary, topics, userMsgCount, phone, company };
 }
 
 export default function ConversationsPage() {
@@ -376,8 +396,61 @@ export default function ConversationsPage() {
                 )}
               </div>
 
+              {/* Conversation Intelligence Bar */}
+              {(() => {
+                const stats = getConvStats(selected);
+                return (
+                  <div className="border-b border-white/5 px-4 py-2.5 bg-white/[0.01]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Avg Confidence */}
+                      <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        stats.avgConf >= 0.7 ? "bg-green-500/10 text-green-400" : stats.avgConf >= 0.4 ? "bg-yellow-500/10 text-yellow-400" : "bg-red-500/10 text-red-400"
+                      }`}>
+                        <Brain className="h-2.5 w-2.5" /> {Math.round(stats.avgConf * 100)}% confidence
+                      </span>
+                      {stats.lowConf > 0 && (
+                        <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] text-red-400">
+                          <AlertTriangle className="h-2.5 w-2.5" /> {stats.lowConf} zwakke antwoorden
+                        </span>
+                      )}
+                      {stats.phone && (
+                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">
+                          <Phone className="h-2.5 w-2.5" /> {stats.phone}
+                        </span>
+                      )}
+                      {stats.company && (
+                        <span className="flex items-center gap-1 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400">
+                          <Building2 className="h-2.5 w-2.5" /> {stats.company}
+                        </span>
+                      )}
+                      {stats.topics.length > 0 && stats.topics.map((t: string) => (
+                        <span key={t} className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[9px] text-white/30">
+                          <Tag className="h-2 w-2" /> {t}
+                        </span>
+                      ))}
+                    </div>
+                    {/* AI Summary */}
+                    {stats.summary?.summary && (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-brand-500/5 border border-brand-500/10 p-2.5">
+                        <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-brand-400 mt-0.5" />
+                        <div>
+                          <p className="text-[11px] text-white/60 leading-relaxed">{stats.summary.summary}</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[9px] text-white/20">{stats.summary.message_count} berichten</span>
+                            <span className={`text-[9px] font-semibold ${stats.summary.avg_confidence >= 0.7 ? "text-green-400" : stats.summary.avg_confidence >= 0.4 ? "text-yellow-400" : "text-red-400"}`}>
+                              {Math.round((stats.summary.avg_confidence || 0) * 100)}% avg
+                            </span>
+                            {stats.summary.escalated && <span className="text-[9px] font-semibold text-red-400">Geëscaleerd</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Messages */}
-              <div ref={detailRef} className="max-h-[calc(100vh-360px)] overflow-y-auto p-4 space-y-3">
+              <div ref={detailRef} className="max-h-[calc(100vh-420px)] overflow-y-auto p-4 space-y-3">
                 {selected.messages.map((m) => (
                   <div key={m.id} className={`flex gap-2.5 ${m.role === "user" ? "justify-end" : ""}`}>
                     {m.role !== "user" && (
