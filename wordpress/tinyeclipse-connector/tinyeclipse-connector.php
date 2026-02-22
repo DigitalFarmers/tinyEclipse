@@ -537,35 +537,109 @@ function tinyeclipse_get_clickable_stats() {
         ];
     }
     
-    // TinyEclipse specific stats
-    $stats['leads'] = [
-        'count' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tinyeclipse_leads"),
-        'label' => 'Leads',
-        'icon' => '🎯',
-        'url' => admin_url('admin.php?page=tinyeclipse-leads'),
-        'drilldown' => tinyeclipse_get_recent_leads(5)
-    ];
+    // TinyEclipse specific stats (safe — check table exists)
+    $leads_table = $wpdb->prefix . 'tinyeclipse_leads';
+    $leads_exists = $wpdb->get_var("SHOW TABLES LIKE '{$leads_table}'") === $leads_table;
+    if ($leads_exists) {
+        $stats['leads'] = [
+            'count' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$leads_table}"),
+            'label' => 'Leads',
+            'icon' => '🎯',
+            'url' => admin_url('admin.php?page=tinyeclipse-leads'),
+            'drilldown' => tinyeclipse_get_recent_leads(5)
+        ];
+    }
     
-    $stats['forms'] = [
-        'count' => $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tinyeclipse_forms"),
-        'label' => 'Formulieren',
-        'icon' => '📝',
-        'url' => admin_url('admin.php?page=tinyeclipse-forms'),
-        'drilldown' => tinyeclipse_get_recent_form_submissions(5)
-    ];
+    $tokens_table = $wpdb->prefix . 'tinyeclipse_tokens';
+    $tokens_exists = $wpdb->get_var("SHOW TABLES LIKE '{$tokens_table}'") === $tokens_table;
+    if ($tokens_exists) {
+        $stats['tokens'] = [
+            'count' => (int) $wpdb->get_var("SELECT COALESCE(SUM(balance),0) FROM {$tokens_table}"),
+            'label' => 'Tokens',
+            'icon' => '🪙',
+            'url' => admin_url('admin.php?page=tinyeclipse-tokens'),
+            'drilldown' => tinyeclipse_get_token_balances(5)
+        ];
+    }
     
-    $stats['tokens'] = [
-        'count' => $wpdb->get_var("SELECT SUM(balance) FROM {$wpdb->prefix}tinyeclipse_tokens"),
-        'label' => 'Tokens',
-        'icon' => '🪙',
-        'url' => admin_url('admin.php?page=tinyeclipse-tokens'),
-        'drilldown' => tinyeclipse_get_token_balances(5)
+    // Plugins stat
+    $stats['plugins'] = [
+        'count' => count(get_plugins()),
+        'label' => 'Plugins',
+        'icon' => '📦',
+        'url' => admin_url('plugins.php'),
+        'drilldown' => []
     ];
     
     return $stats;
 }
 
 // Drill-down helper functions
+function tinyeclipse_get_recent_posts($limit = 5) {
+    $posts = get_posts(['post_type' => 'post', 'numberposts' => $limit, 'orderby' => 'date', 'order' => 'DESC']);
+    $result = [];
+    foreach ($posts as $post) {
+        $result[] = [
+            'id' => $post->ID,
+            'title' => $post->post_title,
+            'url' => get_edit_post_link($post->ID),
+            'date' => tinyeclipse_format_date(strtotime($post->post_date)),
+            'status' => $post->post_status
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_recent_users($limit = 5) {
+    $users = get_users(['number' => $limit, 'orderby' => 'registered', 'order' => 'DESC']);
+    $result = [];
+    foreach ($users as $user) {
+        $result[] = [
+            'id' => $user->ID,
+            'name' => $user->display_name,
+            'email' => $user->user_email,
+            'url' => get_edit_user_link($user->ID),
+            'date' => tinyeclipse_format_date(strtotime($user->user_registered)),
+            'role' => implode(', ', $user->roles)
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_recent_comments($limit = 5) {
+    $comments = get_comments(['number' => $limit, 'orderby' => 'comment_date_gmt', 'order' => 'DESC', 'status' => 'approve']);
+    $result = [];
+    foreach ($comments as $comment) {
+        $result[] = [
+            'id' => $comment->comment_ID,
+            'name' => $comment->comment_author,
+            'email' => $comment->comment_author_email,
+            'url' => get_edit_comment_link($comment->comment_ID),
+            'date' => tinyeclipse_format_date(strtotime($comment->comment_date)),
+            'title' => wp_trim_words($comment->comment_content, 8)
+        ];
+    }
+    return $result;
+}
+
+function tinyeclipse_get_token_balances($limit = 5) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'tinyeclipse_tokens';
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return [];
+    $rows = $wpdb->get_results($wpdb->prepare("SELECT user_id, balance, tier FROM {$table} ORDER BY balance DESC LIMIT %d", $limit));
+    $result = [];
+    foreach ($rows as $row) {
+        $user = get_user_by('id', $row->user_id);
+        $result[] = [
+            'id' => $row->user_id,
+            'name' => $user ? $user->display_name : "User #{$row->user_id}",
+            'balance' => (int) $row->balance,
+            'tier' => $row->tier
+        ];
+    }
+    return $result;
+}
+
 function tinyeclipse_get_recent_pages($limit = 5) {
     $pages = get_posts(['post_type' => 'page', 'numberposts' => $limit, 'orderby' => 'date', 'order' => 'DESC']);
     $result = [];
@@ -621,17 +695,18 @@ function tinyeclipse_get_recent_orders($limit = 5) {
 function tinyeclipse_get_recent_leads($limit = 5) {
     global $wpdb;
     $table = $wpdb->prefix . 'tinyeclipse_leads';
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) return [];
     $leads = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} ORDER BY created_at DESC LIMIT %d", $limit));
-    
+    if (!$leads) return [];
     $result = [];
     foreach ($leads as $lead) {
         $result[] = [
-            'id' => $lead->id,
-            'email' => $lead->email,
-            'name' => $lead->name,
-            'phone' => $lead->phone,
-            'source' => $lead->source,
-            'date' => tinyeclipse_format_datetime(strtotime($lead->created_at))
+            'id' => $lead->id ?? 0,
+            'email' => $lead->email ?? '',
+            'name' => $lead->name ?? '',
+            'phone' => $lead->phone ?? '',
+            'source' => $lead->source ?? '',
+            'date' => isset($lead->created_at) ? tinyeclipse_format_datetime(strtotime($lead->created_at)) : ''
         ];
     }
     return $result;

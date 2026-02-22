@@ -239,25 +239,21 @@ class TinyEclipse_Security {
     }
     
     /**
-     * Create rollback point for security fix.
+     * Create rollback point for security fix (stored as WP option — no extra table needed).
      */
     private function create_rollback_point($fix_type) {
-        global $wpdb;
-        
         $rollback_id = uniqid('rollback_', true);
         
-        // Store rollback info
-        $wpdb->insert($wpdb->prefix . 'tinyeclipse_rollback_points', [
-            'rollback_id' => $rollback_id,
+        // Store rollback info as WP option (safe, no extra table)
+        $rollbacks = get_option('tinyeclipse_rollback_points', []);
+        $rollbacks[$rollback_id] = [
             'fix_type' => $fix_type,
-            'backup_data' => wp_json_encode([
-                'timestamp' => current_time('mysql'),
-                'user_id' => get_current_user_id(),
-                'site_url' => get_home_url()
-            ]),
+            'timestamp' => current_time('mysql'),
+            'user_id' => get_current_user_id(),
+            'site_url' => get_home_url(),
             'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days')),
-            'created_at' => current_time('mysql')
-        ]);
+        ];
+        update_option('tinyeclipse_rollback_points', $rollbacks);
         
         return $rollback_id;
     }
@@ -312,6 +308,50 @@ class TinyEclipse_Security {
             'message' => '✅ Security headers toegevoegd',
             'rollback_id' => $rollback_id,
             'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days'))
+        ];
+    }
+    
+    /**
+     * Fix: Database Prefix (informational — cannot safely change at runtime)
+     */
+    private function fix_db_prefix($rollback_id) {
+        return [
+            'success' => false,
+            'message' => '⚠️ Database prefix wijzigen is een risicovolle operatie die niet automatisch kan worden uitgevoerd. Dit vereist handmatige aanpassing van wp-config.php en alle databasetabellen. Neem contact op met je hosting provider of gebruik een plugin zoals "Brozzme DB Prefix".',
+            'rollback_id' => $rollback_id,
+        ];
+    }
+    
+    /**
+     * Fix: wp-config.php Permissions
+     */
+    private function fix_wp_config_permissions($rollback_id) {
+        $config_path = ABSPATH . 'wp-config.php';
+        if (!file_exists($config_path)) {
+            return ['success' => false, 'message' => 'wp-config.php niet gevonden'];
+        }
+        
+        $current_perms = substr(sprintf('%o', fileperms($config_path)), -3);
+        update_option("tinyeclipse_backup_{$rollback_id}", $current_perms);
+        
+        // Try to set secure permissions (640 or 600)
+        $result = @chmod($config_path, 0640);
+        if (!$result) {
+            $result = @chmod($config_path, 0644);
+        }
+        
+        if ($result) {
+            $new_perms = substr(sprintf('%o', fileperms($config_path)), -3);
+            return [
+                'success' => true,
+                'message' => "✅ wp-config.php permissions gewijzigd van {$current_perms} naar {$new_perms}",
+                'rollback_id' => $rollback_id,
+            ];
+        }
+        
+        return [
+            'success' => false,
+            'message' => '⚠️ Kan permissions niet wijzigen — onvoldoende rechten. Vraag je hosting provider om wp-config.php op 640 te zetten.',
         ];
     }
     
