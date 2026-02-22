@@ -281,10 +281,15 @@ async def admin_superview(
 ):
     """
     Admin superview — zoom out across ALL clients and domains.
-    Shows aggregated stats, module distribution, alerts across everything.
+    Shows aggregated stats, module distribution, alerts, monitoring health,
+    connector status, visitor data, and actionable intelligence per tenant.
     """
+    from app.models.monitor import MonitorCheck, MonitorResult, CheckStatus
+    from app.models.lead import Lead
+
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     since_7d = datetime.now(timezone.utc) - timedelta(days=7)
+    since_30d = datetime.now(timezone.utc) - timedelta(days=30)
 
     # All tenants
     tenants_result = await db.execute(select(Tenant).order_by(Tenant.created_at))
@@ -297,13 +302,30 @@ async def admin_superview(
     total_chats_7d = await db.execute(
         select(func.count(Conversation.id)).where(Conversation.created_at >= since_7d)
     )
+    total_chats_30d = await db.execute(
+        select(func.count(Conversation.id)).where(Conversation.created_at >= since_30d)
+    )
     total_visitors_24h = await db.execute(
         select(func.count(VisitorSession.id)).where(VisitorSession.created_at >= since_24h)
+    )
+    total_visitors_7d = await db.execute(
+        select(func.count(VisitorSession.id)).where(VisitorSession.created_at >= since_7d)
     )
     open_alerts = await db.execute(
         select(func.count(Alert.id)).where(Alert.resolved == False)
     )
+    resolved_alerts = await db.execute(
+        select(func.count(Alert.id)).where(Alert.resolved == True)
+    )
     total_sources = await db.execute(select(func.count(Source.id)))
+    total_leads = await db.execute(
+        select(func.count(Lead.id)).where(Lead.created_at >= since_30d)
+    )
+    escalated_convos = await db.execute(
+        select(func.count(Conversation.id)).where(
+            and_(Conversation.status == "escalated", Conversation.created_at >= since_7d)
+        )
+    )
 
     # Module distribution
     module_counts = await db.execute(
@@ -312,20 +334,110 @@ async def admin_superview(
         .group_by(SiteModule.module_type)
     )
 
-    # Per-tenant summary
+    # Global monitoring health
+    all_checks_result = await db.execute(
+        select(MonitorCheck).where(MonitorCheck.enabled == True)
+    )
+    all_checks = all_checks_result.scalars().all()
+    checks_ok = sum(1 for c in all_checks if c.last_status == CheckStatus.ok)
+    checks_warn = sum(1 for c in all_checks if c.last_status == CheckStatus.warning)
+    checks_crit = sum(1 for c in all_checks if c.last_status == CheckStatus.critical)
+    checks_unknown = sum(1 for c in all_checks if c.last_status == CheckStatus.unknown)
+
+    # Per-tenant summary with rich data
     tenant_summaries = []
     for t in all_tenants:
-        chats = await db.execute(
+        chats_24h_count = await db.execute(
             select(func.count(Conversation.id))
             .where(and_(Conversation.tenant_id == t.id, Conversation.created_at >= since_24h))
         )
-        alerts = await db.execute(
+        chats_7d_count = await db.execute(
+            select(func.count(Conversation.id))
+            .where(and_(Conversation.tenant_id == t.id, Conversation.created_at >= since_7d))
+        )
+        visitors_24h_count = await db.execute(
+            select(func.count(VisitorSession.id))
+            .where(and_(VisitorSession.tenant_id == t.id, VisitorSession.created_at >= since_24h))
+        )
+        visitors_7d_count = await db.execute(
+            select(func.count(VisitorSession.id))
+            .where(and_(VisitorSession.tenant_id == t.id, VisitorSession.created_at >= since_7d))
+        )
+        alerts_open = await db.execute(
             select(func.count(Alert.id))
             .where(and_(Alert.tenant_id == t.id, Alert.resolved == False))
+        )
+        alerts_critical = await db.execute(
+            select(func.count(Alert.id))
+            .where(and_(Alert.tenant_id == t.id, Alert.resolved == False, Alert.severity == "critical"))
         )
         mods = await db.execute(
             select(SiteModule).where(and_(SiteModule.tenant_id == t.id, SiteModule.status == ModuleStatus.active))
         )
+        sources_count = await db.execute(
+            select(func.count(Source.id)).where(Source.tenant_id == t.id)
+        )
+        leads_count = await db.execute(
+            select(func.count(Lead.id)).where(
+                and_(Lead.tenant_id == t.id, Lead.created_at >= since_30d)
+            )
+        )
+        escalated_count = await db.execute(
+            select(func.count(Conversation.id)).where(
+                and_(Conversation.tenant_id == t.id, Conversation.status == "escalated", Conversation.created_at >= since_7d)
+            )
+        )
+
+        # Monitoring health per tenant
+        tenant_checks = await db.execute(
+            select(MonitorCheck).where(and_(MonitorCheck.tenant_id == t.id, MonitorCheck.enabled == True))
+        )
+        t_checks = tenant_checks.scalars().all()
+        t_ok = sum(1 for c in t_checks if c.last_status == CheckStatus.ok)
+        t_warn = sum(1 for c in t_checks if c.last_status == CheckStatus.warning)
+        t_crit = sum(1 for c in t_checks if c.last_status == CheckStatus.critical)
+        t_unknown = sum(1 for c in t_checks if c.last_status == CheckStatus.unknown)
+
+        # Determine overall health
+        if t_crit > 0:
+            health = "critical"
+        elif t_warn > 0:
+            health = "warning"
+        elif t_ok > 0:
+            health = "healthy"
+        else:
+            health = "unknown"
+
+        # Build check details for drill-down
+        check_details = []
+        for c in t_checks:
+            check_details.append({
+                "id": str(c.id),
+                "type": c.check_type.value,
+                "target": c.target,
+                "status": c.last_status.value,
+                "response_ms": c.last_response_ms,
+                "last_checked": c.last_checked_at.isoformat() if c.last_checked_at else None,
+                "failures": c.consecutive_failures,
+            })
+
+        # Recent critical alerts for this tenant
+        recent_alerts_result = await db.execute(
+            select(Alert)
+            .where(and_(Alert.tenant_id == t.id, Alert.resolved == False))
+            .order_by(desc(Alert.created_at))
+            .limit(5)
+        )
+        recent_alerts = [
+            {
+                "id": str(a.id),
+                "severity": a.severity.value,
+                "title": a.title,
+                "message": a.message[:200],
+                "created_at": a.created_at.isoformat(),
+            }
+            for a in recent_alerts_result.scalars().all()
+        ]
 
         tenant_summaries.append({
             "tenant_id": str(t.id),
@@ -335,9 +447,26 @@ async def admin_superview(
             "status": t.status.value,
             "environment": t.environment.value if hasattr(t, 'environment') and t.environment else "production",
             "whmcs_client_id": t.whmcs_client_id,
-            "chats_24h": chats.scalar() or 0,
-            "open_alerts": alerts.scalar() or 0,
+            "chats_24h": chats_24h_count.scalar() or 0,
+            "chats_7d": chats_7d_count.scalar() or 0,
+            "visitors_24h": visitors_24h_count.scalar() or 0,
+            "visitors_7d": visitors_7d_count.scalar() or 0,
+            "open_alerts": alerts_open.scalar() or 0,
+            "critical_alerts": alerts_critical.scalar() or 0,
+            "escalations_7d": escalated_count.scalar() or 0,
+            "leads_30d": leads_count.scalar() or 0,
+            "sources": sources_count.scalar() or 0,
             "modules": [m.module_type.value for m in mods.scalars().all()],
+            "health": health,
+            "monitoring": {
+                "total": len(t_checks),
+                "ok": t_ok,
+                "warning": t_warn,
+                "critical": t_crit,
+                "unknown": t_unknown,
+                "checks": check_details,
+            },
+            "recent_alerts": recent_alerts,
         })
 
     return {
@@ -346,9 +475,21 @@ async def admin_superview(
         "global_stats": {
             "conversations_24h": total_chats_24h.scalar() or 0,
             "conversations_7d": total_chats_7d.scalar() or 0,
+            "conversations_30d": total_chats_30d.scalar() or 0,
             "visitors_24h": total_visitors_24h.scalar() or 0,
+            "visitors_7d": total_visitors_7d.scalar() or 0,
             "open_alerts": open_alerts.scalar() or 0,
+            "resolved_alerts": resolved_alerts.scalar() or 0,
             "total_sources": total_sources.scalar() or 0,
+            "total_leads_30d": total_leads.scalar() or 0,
+            "escalations_7d": escalated_convos.scalar() or 0,
+        },
+        "monitoring_health": {
+            "total_checks": len(all_checks),
+            "ok": checks_ok,
+            "warning": checks_warn,
+            "critical": checks_crit,
+            "unknown": checks_unknown,
         },
         "module_distribution": {row[0].value: row[1] for row in module_counts.all()},
         "tenants": tenant_summaries,
