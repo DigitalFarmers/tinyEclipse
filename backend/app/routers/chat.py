@@ -98,7 +98,7 @@ def _extract_visitor_fingerprint(request: Request) -> dict:
 
 
 def _extract_identity_from_dialog(messages: list) -> dict:
-    """Try to extract visitor name/email from conversation content."""
+    """Try to extract visitor name/email/phone/company from conversation content."""
     identity = {}
     for msg in messages:
         if msg.get("role") != "user":
@@ -110,11 +110,12 @@ def _extract_identity_from_dialog(messages: list) -> dict:
         if email_match:
             identity["email"] = email_match.group(0).lower()
 
-        # Name detection (common patterns)
+        # Name detection (common patterns in NL/EN/FR)
         name_patterns = [
             r'(?:ik ben|mijn naam is|je spreekt met|dit is|ik heet)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
             r'(?:my name is|i am|this is)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
             r'(?:je parle avec|je suis|mon nom est)\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
+            r'(?:naam|name)\s*:\s*([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)',
         ]
         for pattern in name_patterns:
             name_match = re.search(pattern, text, re.IGNORECASE)
@@ -122,10 +123,32 @@ def _extract_identity_from_dialog(messages: list) -> dict:
                 identity["name"] = name_match.group(1).strip()
                 break
 
-        # Phone detection
-        phone_match = re.search(r'(?:\+32|0)\s*\d[\d\s]{7,}', text)
-        if phone_match:
-            identity["phone"] = re.sub(r'\s+', '', phone_match.group(0))
+        # Phone detection (BE/NL/international)
+        phone_patterns = [
+            r'(?:\+32|0032)\s*\d[\d\s\-]{7,}',
+            r'(?:\+31|0031)\s*\d[\d\s\-]{7,}',
+            r'(?:\+33|0033)\s*\d[\d\s\-]{7,}',
+            r'(?:\+\d{1,3})\s*\d[\d\s\-]{7,}',
+            r'0\d[\d\s\-]{7,}',
+        ]
+        for pattern in phone_patterns:
+            phone_match = re.search(pattern, text)
+            if phone_match:
+                identity["phone"] = re.sub(r'[\s\-]', '', phone_match.group(0))
+                break
+
+        # Company detection
+        company_patterns = [
+            r'(?:ik werk bij|ik ben van|namens|voor)\s+([A-Z][A-Za-zà-ÿ\s&\-\.]+?)(?:\.|,|$)',
+            r'(?:company|bedrijf|firma|onderneming)\s*:\s*([A-Za-zà-ÿ\s&\-\.]+?)(?:\.|,|$)',
+        ]
+        for pattern in company_patterns:
+            company_match = re.search(pattern, text, re.IGNORECASE)
+            if company_match:
+                company = company_match.group(1).strip()
+                if len(company) > 2 and len(company) < 80:
+                    identity["company"] = company
+                break
 
     return identity
 
@@ -452,7 +475,7 @@ async def chat(
         tokens_out=llm_result["tokens_out"],
     )
 
-    # ─── [5b] IDENTITY: Extract from dialog and match to contact ───
+    # ─── [5b] IDENTITY: Extract from dialog, match contact, auto-create lead ───
     try:
         dialog_identity = _extract_identity_from_dialog(conversation_history + [{"role": "user", "content": body.message}])
         if dialog_identity:
@@ -473,6 +496,44 @@ async def chat(
                     # Update contact stats
                     contact.total_conversations = (contact.total_conversations or 0) + 1
                     contact.last_seen_at = datetime.utcnow()
+
+            # Auto-create lead when contact info is first detected
+            has_contact_info = dialog_identity.get("email") or dialog_identity.get("phone")
+            if has_contact_info:
+                existing_lead = await db.execute(
+                    select(Lead).where(
+                        Lead.conversation_id == conversation.id
+                    ).limit(1)
+                )
+                if not existing_lead.scalar_one_or_none():
+                    from app.models.lead import LeadSource
+                    from app.services.contact_matcher import find_or_create_contact, increment_contact_stat
+                    lead = Lead(
+                        tenant_id=tenant_uuid,
+                        session_id=body.session_id,
+                        conversation_id=conversation.id,
+                        email=dialog_identity.get("email"),
+                        name=dialog_identity.get("name"),
+                        phone=dialog_identity.get("phone"),
+                        message=body.message[:500],
+                        source=LeadSource.chat,
+                        page_url=fingerprint.get("referer"),
+                    )
+                    # Link to unified contact
+                    try:
+                        contact = await find_or_create_contact(
+                            db, tenant_uuid,
+                            email=dialog_identity.get("email"),
+                            phone=dialog_identity.get("phone"),
+                            name=dialog_identity.get("name"),
+                            source="chat_auto",
+                        )
+                        lead.contact_id = contact.id
+                        await increment_contact_stat(db, contact.id, "total_leads")
+                    except Exception:
+                        pass
+                    db.add(lead)
+                    logger.info("lead_auto_extracted", tenant=tenant.name, email=dialog_identity.get("email"), phone=dialog_identity.get("phone"))
 
             # Update identity blob
             current_identity = conversation.visitor_identity or {}
