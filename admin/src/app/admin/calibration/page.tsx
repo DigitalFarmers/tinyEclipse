@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Gauge, MapPin, Clock, Globe, RefreshCw, Zap, Database, ShoppingCart, Compass, CheckCircle, XCircle,
+  Sparkles, ArrowRight, Brain, Target, TrendingUp, BookOpen, AlertTriangle, Lightbulb,
 } from "lucide-react";
 import { getTenants, getCalibration, getCalibrations, enrichTenantGeo, updateTenantGeo } from "@/lib/api";
 
@@ -162,6 +163,84 @@ export default function CalibrationPage() {
               </div>
             </div>
           )}
+
+          {/* AI Improvement Path */}
+          {(() => {
+            const steps: { icon: any; label: string; done: boolean; action: string; impact: string }[] = [];
+            if (!detail.breakdown?.location) steps.push({ icon: MapPin, label: "Locatie instellen", done: false, action: "Stel stad en land in hieronder, of klik Auto-Calibreer", impact: "+15% score" });
+            if (!detail.breakdown?.timezone) steps.push({ icon: Clock, label: "Tijdzone configureren", done: false, action: "Wordt automatisch ingesteld bij locatie", impact: "+10% score" });
+            if (!detail.breakdown?.knowledge_base) steps.push({ icon: Database, label: "Kennisbank vullen", done: false, action: "Voeg minimaal 5 pagina's toe als kennisbron", impact: "+20% score" });
+            if (!detail.breakdown?.regional_knowledge) steps.push({ icon: Compass, label: "Buurtkennis genereren", done: false, action: "Klik Auto-Calibreer na locatie instellen", impact: "+15% score" });
+            if (!detail.breakdown?.modules_detected) steps.push({ icon: ShoppingCart, label: "Modules activeren", done: false, action: "Installeer de WP plugin en activeer modules", impact: "+10% score" });
+            if (!detail.breakdown?.neighborhood) steps.push({ icon: Globe, label: "Buurtbeschrijving", done: false, action: "Wordt gegenereerd bij Auto-Calibreer", impact: "+10% score" });
+
+            // Add completed items
+            if (detail.breakdown?.location) steps.push({ icon: MapPin, label: "Locatie", done: true, action: detail.city ? `${detail.city}, ${detail.country}` : "OK", impact: "✓" });
+            if (detail.breakdown?.knowledge_base) steps.push({ icon: Database, label: "Kennisbank", done: true, action: `${detail.indexed_sources} bronnen geïndexeerd`, impact: "✓" });
+            if (detail.breakdown?.modules_detected) steps.push({ icon: ShoppingCart, label: "Modules", done: true, action: `${detail.modules} modules actief`, impact: "✓" });
+
+            const pending = steps.filter(s => !s.done);
+            const completed = steps.filter(s => s.done);
+            const potentialGain = pending.reduce((sum, s) => sum + parseInt(s.impact) || 0, 0);
+
+            return (
+              <div className="mt-4 rounded-xl border border-brand-500/10 bg-gradient-to-r from-brand-500/5 to-purple-500/5 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-brand-400">
+                    <Target className="h-3.5 w-3.5" /> Pad naar 100%
+                  </h3>
+                  {potentialGain > 0 && (
+                    <span className="flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-400">
+                      <TrendingUp className="h-2.5 w-2.5" /> +{potentialGain}% mogelijk
+                    </span>
+                  )}
+                </div>
+
+                {pending.length > 0 ? (
+                  <div className="space-y-2">
+                    {pending.map((step, i) => {
+                      const Icon = step.icon;
+                      return (
+                        <div key={step.label} className="flex items-start gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-brand-500/10">
+                            <Icon className="h-3 w-3 text-brand-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold">{step.label}</span>
+                              <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[9px] font-bold text-green-400">{step.impact}</span>
+                            </div>
+                            <p className="mt-0.5 text-[10px] text-white/40">{step.action}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-lg bg-green-500/5 border border-green-500/10 p-3">
+                    <CheckCircle className="h-5 w-5 text-green-400" />
+                    <div>
+                      <p className="text-xs font-semibold text-green-400">Volledig gecalibreerd!</p>
+                      <p className="text-[10px] text-white/40">Eclipse kent deze site door en door.</p>
+                    </div>
+                  </div>
+                )}
+
+                {completed.length > 0 && pending.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {completed.map(s => {
+                      const Icon = s.icon;
+                      return (
+                        <span key={s.label} className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[9px] text-green-400">
+                          <Icon className="h-2.5 w-2.5" /> {s.label} ✓
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Manual Geo Setup */}
           <div className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] p-4">
