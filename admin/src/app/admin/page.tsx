@@ -294,21 +294,27 @@ export default function DashboardPage() {
               {/* Quick Links */}
               <div className="mt-6">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-white/25">
-                  Snelle Acties
+                  ⚡ Snelle Acties
                 </h2>
                 <div className="grid grid-cols-2 gap-2">
-                  <Link href="/admin/insights" className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px] font-medium text-white/50 transition hover:border-brand-500/20 hover:bg-brand-500/5 hover:text-brand-400">
-                    <Brain className="h-3.5 w-3.5" /> AI Insights
-                  </Link>
-                  <Link href="/admin/superview" className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px] font-medium text-white/50 transition hover:border-purple-500/20 hover:bg-purple-500/5 hover:text-purple-400">
-                    <Eye className="h-3.5 w-3.5" /> Superview
-                  </Link>
-                  <Link href="/admin/sources" className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px] font-medium text-white/50 transition hover:border-green-500/20 hover:bg-green-500/5 hover:text-green-400">
-                    <Database className="h-3.5 w-3.5" /> Knowledge Base
-                  </Link>
-                  <Link href="/admin/clients" className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px] font-medium text-white/50 transition hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-400">
-                    <Users className="h-3.5 w-3.5" /> Klanten
-                  </Link>
+                  {[
+                    { href: "/admin/commander", emoji: "🖥️", label: "Commander", desc: "Site beheer", hover: "hover:border-brand-500/20 hover:bg-brand-500/5 hover:text-brand-400" },
+                    { href: "/admin/conversations", emoji: "💬", label: "Gesprekken", desc: "AI chats", hover: "hover:border-green-500/20 hover:bg-green-500/5 hover:text-green-400" },
+                    { href: "/admin/sources", emoji: "📚", label: "Kennisbank", desc: "AI bronnen", hover: "hover:border-purple-500/20 hover:bg-purple-500/5 hover:text-purple-400" },
+                    { href: "/admin/contacts", emoji: "👥", label: "Contacten", desc: "CRM", hover: "hover:border-blue-500/20 hover:bg-blue-500/5 hover:text-blue-400" },
+                    { href: "/admin/site-manager", emoji: "🛒", label: "Site Manager", desc: "Shop & Forms", hover: "hover:border-yellow-500/20 hover:bg-yellow-500/5 hover:text-yellow-400" },
+                    { href: "/admin/clients", emoji: "🏢", label: "Klanten", desc: "Accounts", hover: "hover:border-cyan-500/20 hover:bg-cyan-500/5 hover:text-cyan-400" },
+                    { href: "/admin/monitoring", emoji: "📡", label: "Monitoring", desc: "Uptime & SSL", hover: "hover:border-red-500/20 hover:bg-red-500/5 hover:text-red-400" },
+                    { href: "/admin/insights", emoji: "🧠", label: "AI Insights", desc: "Analyse", hover: "hover:border-pink-500/20 hover:bg-pink-500/5 hover:text-pink-400" },
+                  ].map((a) => (
+                    <Link key={a.href} href={a.href} className={`flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-3 transition ${a.hover}`}>
+                      <span className="text-base">{a.emoji}</span>
+                      <div>
+                        <p className="text-[11px] font-semibold">{a.label}</p>
+                        <p className="text-[9px] text-white/25">{a.desc}</p>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
               </div>
             </div>
