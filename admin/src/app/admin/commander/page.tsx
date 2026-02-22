@@ -196,15 +196,40 @@ export default function CommanderPage() {
         </select>
       </div>
 
+      {/* Quick Templates */}
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {[
+          { emoji: "📊", label: "Status", cmd: "status" },
+          { emoji: "🔄", label: "Sync", cmd: "sync" },
+          { emoji: "📦", label: "Orders", cmd: "orders" },
+          { emoji: "🛍️", label: "Producten", cmd: "products" },
+          { emoji: "💰", label: "Omzet", cmd: "omzet" },
+          { emoji: "📄", label: "Pagina's", cmd: "paginas" },
+          { emoji: "👥", label: "Contacten", cmd: "contacts" },
+          { emoji: "📚", label: "Kennisbank", cmd: "knowledge" },
+          { emoji: "⚡", label: "Events", cmd: "events" },
+          { emoji: "🔒", label: "Security", cmd: "security audit" },
+          { emoji: "🔍", label: "SEO Check", cmd: "seo check" },
+          { emoji: "📧", label: "Mail Status", cmd: "mail status" },
+          { emoji: "🌐", label: "Talen", cmd: "languages" },
+          { emoji: "🧹", label: "Cleanup", cmd: "cleanup check" },
+        ].map((t) => (
+          <button key={t.cmd} onClick={() => { setInput(t.cmd); }}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] font-medium text-white/50 transition hover:border-brand-500/30 hover:bg-brand-500/5 hover:text-white/80">
+            <span>{t.emoji}</span> {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Output */}
-      <div ref={scrollRef} className="mt-4 flex-1 overflow-y-auto rounded-2xl border border-white/5 bg-black/30 p-4 font-mono text-xs">
+      <div ref={scrollRef} className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-white/5 bg-black/30 p-4 font-mono text-xs">
         {history.length === 0 && (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <Terminal className="mx-auto h-10 w-10 text-brand-500/20" />
               <p className="mt-3 text-sm text-white/30">Eclipse Site Commander</p>
-              <p className="mt-1 text-[11px] text-white/20">Typ een commando of "help" voor opties</p>
-              {tenant && <p className="mt-2 text-[10px] text-brand-400/50">Verbonden met {tenant.name} ({tenant.domain})</p>}
+              <p className="mt-1 text-[11px] text-white/20">Klik een template hierboven of typ een commando</p>
+              {tenant && <p className="mt-2 text-[10px] text-brand-400/50">🔌 {tenant.name} ({tenant.domain})</p>}
             </div>
           </div>
         )}
