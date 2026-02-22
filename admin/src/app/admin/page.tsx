@@ -549,21 +549,30 @@ function WebsiteCard({
 
   return (
     <div className={`group rounded-2xl border p-4 transition hover:border-white/10 hover:bg-white/[0.04] ${borderColor}`}>
-      {/* Priority Badge */}
+      {/* Priority Badge — clickable with specific action */}
       {isCritical && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-400">
-          <ShieldAlert className="h-3 w-3" /> CRITICAL — Actie vereist
-        </div>
+        <Link href={`/admin/alerts?tenant=${tenant.id}`} className="mb-2 flex items-center justify-between rounded-lg bg-red-500/10 px-2.5 py-1.5 transition hover:bg-red-500/15">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-red-400">
+            <ShieldAlert className="h-3 w-3" /> {monitor?.stats?.critical} critical check{(monitor?.stats?.critical ?? 0) > 1 ? 's' : ''} failing
+          </div>
+          <span className="text-[9px] text-red-400/60">Bekijk alerts →</span>
+        </Link>
       )}
       {!isCritical && isWarning && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-yellow-500/10 px-2.5 py-1 text-[10px] font-bold text-yellow-400">
-          <Shield className="h-3 w-3" /> WARNING — Aandacht nodig
-        </div>
+        <Link href={`/admin/monitoring?tenant=${tenant.id}`} className="mb-2 flex items-center justify-between rounded-lg bg-yellow-500/10 px-2.5 py-1.5 transition hover:bg-yellow-500/15">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-400">
+            <Shield className="h-3 w-3" /> {monitor?.stats?.warning} warning{(monitor?.stats?.warning ?? 0) > 1 ? 's' : ''} — aandacht nodig
+          </div>
+          <span className="text-[9px] text-yellow-400/60">Bekijk checks →</span>
+        </Link>
       )}
       {!isCritical && !isWarning && !connected && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold text-orange-400">
-          <Zap className="h-3 w-3" /> SETUP — Connector installeren
-        </div>
+        <Link href={`/admin/tenants/${tenant.id}`} className="mb-2 flex items-center justify-between rounded-lg bg-orange-500/10 px-2.5 py-1.5 transition hover:bg-orange-500/15">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-orange-400">
+            <Zap className="h-3 w-3" /> Connector niet bereikbaar
+          </div>
+          <span className="text-[9px] text-orange-400/60">Configureer →</span>
+        </Link>
       )}
 
       {/* Header */}
