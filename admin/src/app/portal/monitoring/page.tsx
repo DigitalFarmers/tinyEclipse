@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, ShieldCheck, ShieldAlert, Clock, Globe, Lock, Gauge, Server } from "lucide-react";
+import { Shield, ShieldCheck, ShieldAlert, Clock, Globe, Lock, Gauge, Server, Crown } from "lucide-react";
+import { ProTeaser, ProBadge } from "@/components/ProTeaser";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -32,11 +33,25 @@ export default function PortalMonitoringPage() {
   const sb = (s: string) => s === "ok" ? "border-green-500/20 bg-green-500/5" : s === "warning" ? "border-yellow-500/20 bg-yellow-500/5" : s === "critical" ? "border-red-500/20 bg-red-500/5" : "border-white/10 bg-white/[0.02]";
 
   if (!session) return null;
+  const plan = session.plan || "tiny";
+  const basicChecks = ["uptime"];
+  const proChecks = ["ssl", "dns"];
+  const proPlusChecks = ["security_headers", "forms", "performance", "content_change", "smtp"];
 
   return (
     <div>
-      <h1 className="text-xl font-bold tracking-tight">Website Monitoring</h1>
-      <p className="mt-0.5 text-sm text-white/40">24/7 uptime, SSL, performance & DNS checks voor {session.domain}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Website Monitoring</h1>
+          <p className="mt-0.5 text-sm text-white/40">24/7 uptime, SSL, performance & DNS checks voor {session.domain}</p>
+        </div>
+        {plan === "tiny" && (
+          <div className="flex items-center gap-2 rounded-lg bg-brand-500/10 border border-brand-500/20 px-3 py-2">
+            <Crown className="h-3.5 w-3.5 text-brand-400" />
+            <span className="text-[11px] font-semibold text-brand-400">Upgrade voor volledige monitoring</span>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="mt-12 flex items-center justify-center gap-3 text-white/40">
@@ -61,8 +76,9 @@ export default function PortalMonitoringPage() {
             </div>
           </div>
 
+          {/* Basic checks — visible to all */}
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {monitor.checks.map((c: any) => {
+            {monitor.checks.filter((c: any) => basicChecks.includes(c.type)).map((c: any) => {
               const Icon = icons[c.type] || Shield;
               return (
                 <div key={c.id} className={`rounded-xl border p-4 ${sb(c.status)}`}>
@@ -84,6 +100,60 @@ export default function PortalMonitoringPage() {
               );
             })}
           </div>
+
+          {/* PRO checks — SSL, DNS */}
+          <ProTeaser plan={plan} requiredPlan="pro" feature="SSL & DNS Monitoring" description="Controleer SSL-certificaten en DNS-configuratie automatisch.">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {monitor.checks.filter((c: any) => proChecks.includes(c.type)).map((c: any) => {
+                const Icon = icons[c.type] || Shield;
+                return (
+                  <div key={c.id} className={`rounded-xl border p-4 ${sb(c.status)}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`h-4 w-4 ${sc(c.status)}`} />
+                        <span className="text-xs font-semibold uppercase tracking-wider">{c.type}</span>
+                      </div>
+                      <span className={`text-[10px] font-bold uppercase ${sc(c.status)}`}>{c.status}</span>
+                    </div>
+                    {c.response_time_ms && <p className="mt-2 text-lg font-bold">{c.response_time_ms}ms</p>}
+                    {c.last_checked_at && (
+                      <p className="mt-1 flex items-center gap-1 text-[10px] text-white/30">
+                        <Clock className="h-2.5 w-2.5" />
+                        {new Date(c.last_checked_at).toLocaleString("nl-BE")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ProTeaser>
+
+          {/* PRO+ checks — Security headers, forms, performance, content change */}
+          <ProTeaser plan={plan} requiredPlan="pro_plus" feature="Geavanceerde Monitoring" description="Security headers, formulieren, performance & content change detectie.">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {monitor.checks.filter((c: any) => proPlusChecks.includes(c.type)).map((c: any) => {
+                const Icon = icons[c.type] || Shield;
+                return (
+                  <div key={c.id} className={`rounded-xl border p-4 ${sb(c.status)}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`h-4 w-4 ${sc(c.status)}`} />
+                        <span className="text-xs font-semibold uppercase tracking-wider">{c.type}</span>
+                      </div>
+                      <span className={`text-[10px] font-bold uppercase ${sc(c.status)}`}>{c.status}</span>
+                    </div>
+                    {c.response_time_ms && <p className="mt-2 text-lg font-bold">{c.response_time_ms}ms</p>}
+                    {c.last_checked_at && (
+                      <p className="mt-1 flex items-center gap-1 text-[10px] text-white/30">
+                        <Clock className="h-2.5 w-2.5" />
+                        {new Date(c.last_checked_at).toLocaleString("nl-BE")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ProTeaser>
 
           {monitor.recent_alerts?.length > 0 && (
             <>

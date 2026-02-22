@@ -17,6 +17,7 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { usePortalSession } from "@/lib/usePortalSession";
+import { ProTeaser } from "@/components/ProTeaser";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -58,6 +59,8 @@ export default function PortalReportsPage() {
   if (!session) return null;
 
   const PERIOD_LABELS: Record<string, string> = { day: "Vandaag", week: "Deze week", month: "Deze maand", year: "Dit jaar" };
+
+  const plan = session.plan || "tiny";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -163,23 +166,25 @@ export default function PortalReportsPage() {
             )}
           </div>
 
-          {/* AI Suggestions */}
-          {summary.ai?.suggestions?.length > 0 && (
-            <>
-              <h2 className="mt-8 mb-3 text-xs font-semibold uppercase tracking-widest text-white/25">Aanbevelingen</h2>
-              <div className="space-y-2">
-                {summary.ai.suggestions.map((s: any, i: number) => (
-                  <div key={i} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                    <Lightbulb className="h-4 w-4 flex-shrink-0 text-yellow-400" />
-                    <div className="flex-1">
-                      <span className="text-xs font-semibold">{s.title}</span>
-                      <p className="text-[10px] text-white/40">{s.description}</p>
+          {/* AI Suggestions — PRO feature */}
+          <ProTeaser plan={plan} requiredPlan="pro" feature="AI Aanbevelingen" description="Ontvang slimme verbetervoorstellen op basis van je data.">
+            {summary.ai?.suggestions?.length > 0 && (
+              <>
+                <h2 className="mt-8 mb-3 text-xs font-semibold uppercase tracking-widest text-white/25">Aanbevelingen</h2>
+                <div className="space-y-2">
+                  {summary.ai.suggestions.map((s: any, i: number) => (
+                    <div key={i} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                      <Lightbulb className="h-4 w-4 flex-shrink-0 text-yellow-400" />
+                      <div className="flex-1">
+                        <span className="text-xs font-semibold">{s.title}</span>
+                        <p className="text-[10px] text-white/40">{s.description}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+                  ))}
+                </div>
+              </>
+            )}
+          </ProTeaser>
 
           {/* Top Pages */}
           {summary.stats?.top_pages?.length > 0 && (
@@ -203,7 +208,8 @@ export default function PortalReportsPage() {
         </div>
       )}
 
-      {/* Growth Tracker */}
+      {/* Growth Tracker — PRO+ feature */}
+      <ProTeaser plan={plan} requiredPlan="pro_plus" feature="Groei Tracker" description="Bekijk hoe je site groeit over tijd met maandelijkse trends.">
       {growth && (
         <>
           <h2 className="mt-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/25">
@@ -253,6 +259,7 @@ export default function PortalReportsPage() {
           )}
         </>
       )}
+      </ProTeaser>
     </div>
   );
 }
