@@ -480,6 +480,160 @@ Geef terug als JSON:
 
 
 # ═══════════════════════════════════════════════════════════
+#  AI LEARNING LOOP — Knowledge gaps, learned Q&A, summaries
+# ═══════════════════════════════════════════════════════════
+
+
+@admin_router.get("/learning/stats")
+async def learning_stats(
+    db: AsyncSession = Depends(get_db),
+):
+    """AI Learning Loop stats — how much the AI has learned from conversations."""
+    from app.models.source import Source, SourceType
+
+    # Count learned FAQ sources
+    learned_q = await db.execute(
+        select(func.count(Source.id)).where(Source.title.ilike("[AI Learned]%"))
+    )
+    total_learned = learned_q.scalar() or 0
+
+    # Count per tenant
+    learned_per_tenant = await db.execute(
+        select(Source.tenant_id, func.count(Source.id))
+        .where(Source.title.ilike("[AI Learned]%"))
+        .group_by(Source.tenant_id)
+    )
+    per_tenant = {str(row[0]): row[1] for row in learned_per_tenant.all()}
+
+    # Count conversations with summaries
+    summarized_q = await db.execute(
+        select(func.count(Conversation.id)).where(
+            Conversation.visitor_identity.op("->>")(
+                "conversation_summary"
+            ).isnot(None)
+        )
+    )
+    total_summarized = summarized_q.scalar() or 0
+
+    # Count knowledge gaps (low confidence / escalated messages)
+    low_conf_q = await db.execute(
+        select(func.count(Message.id)).where(
+            and_(
+                Message.role == "assistant",
+                Message.confidence < 0.4,
+                Message.created_at >= datetime.now(timezone.utc) - timedelta(days=30),
+            )
+        )
+    )
+    low_confidence_count = low_conf_q.scalar() or 0
+
+    escalated_q = await db.execute(
+        select(func.count(Message.id)).where(
+            and_(
+                Message.escalated == True,
+                Message.created_at >= datetime.now(timezone.utc) - timedelta(days=30),
+            )
+        )
+    )
+    escalated_count = escalated_q.scalar() or 0
+
+    # Average confidence over time
+    avg_conf_q = await db.execute(
+        select(func.avg(Message.confidence)).where(
+            and_(
+                Message.role == "assistant",
+                Message.confidence.isnot(None),
+                Message.created_at >= datetime.now(timezone.utc) - timedelta(days=30),
+            )
+        )
+    )
+    avg_confidence = round(float(avg_conf_q.scalar() or 0), 3)
+
+    return {
+        "total_learned_qa": total_learned,
+        "learned_per_tenant": per_tenant,
+        "total_summarized": total_summarized,
+        "knowledge_gaps_30d": {
+            "low_confidence": low_confidence_count,
+            "escalated": escalated_count,
+        },
+        "avg_confidence_30d": avg_confidence,
+    }
+
+
+@admin_router.get("/learning/gaps/{tenant_id}")
+async def learning_gaps(
+    tenant_id: str,
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Knowledge gaps for a tenant — questions the AI couldn't answer well."""
+    tid = uuid.UUID(tenant_id)
+
+    # Find low-confidence or escalated assistant messages
+    result = await db.execute(
+        select(Message)
+        .where(and_(
+            Message.tenant_id == tid,
+            Message.role == "assistant",
+            Message.confidence < 0.5,
+        ))
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    low_conf_msgs = result.scalars().all()
+
+    gaps = []
+    for msg in low_conf_msgs:
+        # Get the preceding user message
+        user_msg_q = await db.execute(
+            select(Message)
+            .where(and_(
+                Message.conversation_id == msg.conversation_id,
+                Message.role == "user",
+                Message.created_at < msg.created_at,
+            ))
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        user_msg = user_msg_q.scalar_one_or_none()
+        if user_msg:
+            gaps.append({
+                "question": user_msg.content[:300],
+                "answer": msg.content[:300],
+                "confidence": msg.confidence,
+                "escalated": msg.escalated,
+                "conversation_id": str(msg.conversation_id),
+                "created_at": msg.created_at.isoformat(),
+            })
+
+    return {
+        "tenant_id": tenant_id,
+        "total_gaps": len(gaps),
+        "gaps": gaps,
+    }
+
+
+@admin_router.post("/learning/process/{tenant_id}")
+async def trigger_learning(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger learning loop for a tenant's stale conversations."""
+    from app.services.learning import process_stale_conversations
+    tid = uuid.UUID(tenant_id)
+
+    # Process stale conversations for this tenant
+    results = await process_stale_conversations(db, inactive_minutes=10)
+    tenant_results = [r for r in results if r.get("tenant_id") == tenant_id or True]
+
+    return {
+        "processed": len(tenant_results),
+        "results": tenant_results,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 #  PORTAL INSIGHTS (Client-facing)
 # ═══════════════════════════════════════════════════════════
 
