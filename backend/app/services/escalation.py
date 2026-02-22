@@ -83,6 +83,25 @@ async def escalate_conversation(
     asyncio.create_task(_send_webhook(context))
     asyncio.create_task(_send_email_notification(context))
 
+    # Also dispatch through webhook system for Slack/Telegram/custom subscribers
+    try:
+        from app.routers.webhooks import dispatch_event
+        asyncio.create_task(dispatch_event(
+            event="conversation.escalated",
+            tenant_id=str(conversation.tenant_id),
+            payload={
+                "tenant_name": tenant_name,
+                "domain": tenant_domain,
+                "confidence": confidence,
+                "reason": reason,
+                "message": f"AI escalatie voor {tenant_name} ({tenant_domain}) — confidence {round(confidence * 100)}%, reden: {reason}",
+                "conversation_id": str(conversation.id),
+                "portal_url": context["portal_url"],
+            },
+        ))
+    except Exception:
+        pass  # Never break escalation for webhook dispatch
+
 
 async def _send_webhook(context: dict) -> None:
     """Send escalation to Slack/Discord/custom webhook."""

@@ -27,6 +27,7 @@ from app.models.monitor import (
     MonitorCheck, MonitorResult, Alert,
     CheckType, CheckStatus, AlertSeverity,
 )
+from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -445,6 +446,27 @@ async def execute_check_and_store(db: AsyncSession, check: MonitorCheck) -> Moni
         )
         db.add(alert)
         logger.warning(f"[alert] {severity.value}: {alert.title} for tenant {check.tenant_id}")
+
+        # Push notification via webhooks
+        try:
+            from app.routers.webhooks import dispatch_event
+            tenant = await db.get(Tenant, check.tenant_id) if hasattr(db, 'get') else None
+            await dispatch_event(
+                event="alert.created",
+                tenant_id=str(check.tenant_id),
+                payload={
+                    "severity": severity.value,
+                    "title": alert.title,
+                    "message": alert.message[:500],
+                    "check_type": check.check_type.value,
+                    "target": check.target,
+                    "consecutive_failures": check.consecutive_failures,
+                    "tenant_name": tenant.name if tenant else str(check.tenant_id),
+                    "domain": tenant.domain if tenant else check.target,
+                },
+            )
+        except Exception as e:
+            logger.debug(f"[alert] Webhook dispatch failed (non-critical): {e}")
 
     await db.flush()
     return result

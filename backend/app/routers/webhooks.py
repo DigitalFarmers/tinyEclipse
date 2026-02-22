@@ -35,6 +35,7 @@ _webhook_logs: list[dict] = []
 class WebhookType(str, PyEnum):
     slack = "slack"
     discord = "discord"
+    telegram = "telegram"
     email = "email"
     custom = "custom"
 
@@ -217,16 +218,27 @@ async def _dispatch_webhook(webhook: dict, payload: dict) -> dict:
         body = _format_slack(payload)
     elif wh_type == "discord":
         body = _format_discord(payload)
+    elif wh_type == "telegram":
+        body = _format_telegram(payload)
     else:
         body = payload
 
     # Sign payload if secret is set
     headers = {"Content-Type": "application/json"}
-    if webhook.get("secret"):
+    if webhook.get("secret") and wh_type not in ("telegram",):
         import json
         raw = json.dumps(body, sort_keys=True)
         sig = hmac.new(webhook["secret"].encode(), raw.encode(), hashlib.sha256).hexdigest()
         headers["X-Eclipse-Signature"] = f"sha256={sig}"
+
+    # Telegram uses Bot API — URL format: https://api.telegram.org/bot<TOKEN>/sendMessage
+    # The webhook URL should be the bot token, and secret should be the chat_id
+    if wh_type == "telegram":
+        bot_token = url
+        chat_id = webhook.get("secret", "")
+        tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        body["chat_id"] = chat_id
+        url = tg_url
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -290,6 +302,37 @@ def _format_slack(payload: dict) -> dict:
     text += f"_Timestamp: {payload.get('timestamp', '')}_"
 
     return {"text": text}
+
+
+def _format_telegram(payload: dict) -> dict:
+    """Format payload for Telegram Bot API sendMessage."""
+    event = payload.get("event", "unknown")
+    message = payload.get("message", "")
+    tenant = payload.get("tenant_name", payload.get("tenant_id", ""))
+    domain = payload.get("domain", "")
+    severity = payload.get("severity", "")
+
+    emoji = {
+        "alert.created": "🚨", "alert.resolved": "✅",
+        "uptime.down": "🔴", "uptime.recovered": "🟢",
+        "ssl.expiring": "🔒", "security.critical": "🛡️",
+        "heartbeat.dead": "💀", "conversation.escalated": "📢",
+        "test": "⚡",
+    }.get(event, "🔔")
+
+    text = f"{emoji} *Eclipse — {event}*\n"
+    if tenant:
+        text += f"*Site:* {tenant}"
+        if domain:
+            text += f" ({domain})"
+        text += "\n"
+    if severity:
+        text += f"*Severity:* {severity.upper()}\n"
+    if message:
+        text += f"\n{message}\n"
+    text += f"\n_{payload.get('timestamp', '')[:19]}_"
+
+    return {"text": text, "parse_mode": "Markdown"}
 
 
 def _format_discord(payload: dict) -> dict:
