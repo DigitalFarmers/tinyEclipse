@@ -19,125 +19,101 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create push_subscriptions table
-    op.create_table('push_subscriptions',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
-        sa.Column('endpoint', sa.String(length=500), nullable=False),
-        sa.Column('p256dh_key', sa.String(length=255), nullable=False),
-        sa.Column('auth_key', sa.String(length=255), nullable=False),
-        sa.Column('user_agent', sa.String(length=500), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, default=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('last_used', sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_push_subscriptions_user_id'), 'push_subscriptions', ['user_id'], unique=False)
-    op.create_index(op.f('ix_push_subscriptions_tenant_id'), 'push_subscriptions', ['tenant_id'], unique=False)
+    # All IF NOT EXISTS — alerts table already exists from migration 002
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL,
+        tenant_id UUID REFERENCES tenants(id),
+        endpoint VARCHAR(500) NOT NULL,
+        p256dh_key VARCHAR(255) NOT NULL,
+        auth_key VARCHAR(255) NOT NULL,
+        user_agent VARCHAR(500),
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user_id ON push_subscriptions (user_id);
+    CREATE INDEX IF NOT EXISTS ix_push_subscriptions_tenant_id ON push_subscriptions (tenant_id);
 
-    # Create push_notifications table
-    op.create_table('push_notifications',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
-        sa.Column('subscription_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.ForeignKeyConstraint(['subscription_id'], ['push_subscriptions.id'], ),
-        sa.Column('title', sa.String(length=200), nullable=False),
-        sa.Column('body', sa.Text(), nullable=False),
-        sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column('status', sa.String(length=20), nullable=False, default='pending'),
-        sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_push_notifications_tenant_id'), 'push_notifications', ['tenant_id'], unique=False)
+    CREATE TABLE IF NOT EXISTS push_notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID REFERENCES tenants(id),
+        subscription_id UUID REFERENCES push_subscriptions(id),
+        title VARCHAR(200) NOT NULL,
+        body TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_push_notifications_tenant_id ON push_notifications (tenant_id);
 
-    # Create vapid_keys table
-    op.create_table('vapid_keys',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
-        sa.Column('public_key', sa.String(length=255), nullable=False, unique=True),
-        sa.Column('private_key', sa.String(length=255), nullable=False, unique=True),
-        sa.Column('subject', sa.String(length=255), nullable=False, default='mailto:admin@tinyeclipse.digitalfarmers.be'),
-        sa.Column('is_active', sa.Boolean(), nullable=False, default=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_vapid_keys_tenant_id'), 'vapid_keys', ['tenant_id'], unique=False)
+    CREATE TABLE IF NOT EXISTS vapid_keys (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID REFERENCES tenants(id),
+        public_key VARCHAR(255) NOT NULL UNIQUE,
+        private_key VARCHAR(255) NOT NULL UNIQUE,
+        subject VARCHAR(255) NOT NULL DEFAULT 'mailto:admin@tinyeclipse.digitalfarmers.be',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_vapid_keys_tenant_id ON vapid_keys (tenant_id);
 
-    # Create alert_rules table
-    op.create_table('alert_rules',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
-        sa.Column('name', sa.String(length=200), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('alert_type', sa.String(length=50), nullable=False),
-        sa.Column('severity', sa.String(length=20), nullable=False, default='medium'),
-        sa.Column('conditions', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column('threshold_value', sa.Numeric(precision=10, scale=2), nullable=True),
-        sa.Column('threshold_operator', sa.String(length=10), nullable=True),
-        sa.Column('is_enabled', sa.Boolean(), nullable=False, default=True),
-        sa.Column('notify_push', sa.Boolean(), nullable=False, default=True),
-        sa.Column('notify_email', sa.Boolean(), nullable=False, default=False),
-        sa.Column('notify_webhook', sa.Boolean(), nullable=False, default=False),
-        sa.Column('webhook_url', sa.String(length=500), nullable=True),
-        sa.Column('cooldown_minutes', sa.Integer(), nullable=False, default=60),
-        sa.Column('auto_resolve_minutes', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_alert_rules_tenant_id'), 'alert_rules', ['tenant_id'], unique=False)
+    CREATE TABLE IF NOT EXISTS alert_rules (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        name VARCHAR(200) NOT NULL,
+        description TEXT,
+        alert_type VARCHAR(50) NOT NULL,
+        severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+        conditions JSONB NOT NULL,
+        threshold_value NUMERIC(10,2),
+        threshold_operator VARCHAR(10),
+        is_enabled BOOLEAN NOT NULL DEFAULT true,
+        notify_push BOOLEAN NOT NULL DEFAULT true,
+        notify_email BOOLEAN NOT NULL DEFAULT false,
+        notify_webhook BOOLEAN NOT NULL DEFAULT false,
+        webhook_url VARCHAR(500),
+        cooldown_minutes INTEGER NOT NULL DEFAULT 60,
+        auto_resolve_minutes INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_alert_rules_tenant_id ON alert_rules (tenant_id);
 
-    # Create alerts table
-    op.create_table('alerts',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
-        sa.Column('rule_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(['rule_id'], ['alert_rules.id'], ),
-        sa.Column('title', sa.String(length=200), nullable=False),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('alert_type', sa.String(length=50), nullable=False),
-        sa.Column('severity', sa.String(length=20), nullable=False),
-        sa.Column('status', sa.String(length=20), nullable=False, default='active'),
-        sa.Column('source_id', sa.String(length=100), nullable=True),
-        sa.Column('source_type', sa.String(length=50), nullable=True),
-        sa.Column('context', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column('triggered_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('acknowledged_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('resolved_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('acknowledged_by', sa.String(length=200), nullable=True),
-        sa.Column('resolved_by', sa.String(length=200), nullable=True),
-        sa.Column('resolution_note', sa.Text(), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_alerts_tenant_id'), 'alerts', ['tenant_id'], unique=False)
+    -- alerts table already exists from migration 002 (monitoring).
+    -- Add missing columns that the proactive alert system needs.
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS rule_id UUID REFERENCES alert_rules(id);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS title VARCHAR(200);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS alert_type VARCHAR(50);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source_id VARCHAR(100);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source_type VARCHAR(50);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS context JSONB DEFAULT '{}';
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS triggered_at TIMESTAMPTZ DEFAULT now();
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS acknowledged_by VARCHAR(200);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_by VARCHAR(200);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolution_note TEXT;
 
-    # Create alert_notifications table
-    op.create_table('alert_notifications',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()'), primary_key=True),
-        sa.Column('alert_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.ForeignKeyConstraint(['alert_id'], ['alerts.id'], ),
-        sa.Column('channel', sa.String(length=20), nullable=False),
-        sa.Column('recipient', sa.String(length=200), nullable=False),
-        sa.Column('status', sa.String(length=20), nullable=False, default='pending'),
-        sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
+    CREATE TABLE IF NOT EXISTS alert_notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        alert_id UUID NOT NULL REFERENCES alerts(id),
+        channel VARCHAR(20) NOT NULL,
+        recipient VARCHAR(200) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    """)
 
 
 def downgrade() -> None:
-    # Drop tables in reverse order
     op.drop_table('alert_notifications')
-    op.drop_table('alerts')
     op.drop_table('alert_rules')
     op.drop_table('vapid_keys')
     op.drop_table('push_notifications')

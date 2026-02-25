@@ -14,22 +14,28 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        "system_events",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), nullable=True, index=True),
-        sa.Column("domain", sa.String(20), nullable=False, index=True),
-        sa.Column("severity", sa.String(20), nullable=False, server_default="info", index=True),
-        sa.Column("action", sa.String(100), nullable=False, index=True),
-        sa.Column("title", sa.String(500), nullable=False),
-        sa.Column("detail", sa.Text, nullable=True),
-        sa.Column("data", JSONB, nullable=False, server_default="{}"),
-        sa.Column("source", sa.String(100), nullable=True),
-        sa.Column("ip", sa.String(45), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), index=True),
-    )
-    op.create_index("ix_system_events_domain_created", "system_events", ["domain", "created_at"])
-    op.create_index("ix_system_events_tenant_created", "system_events", ["tenant_id", "created_at"])
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS system_events (
+        id UUID PRIMARY KEY,
+        tenant_id UUID,
+        domain VARCHAR(20) NOT NULL,
+        severity VARCHAR(20) NOT NULL DEFAULT 'info',
+        action VARCHAR(100) NOT NULL,
+        title VARCHAR(500) NOT NULL,
+        detail TEXT,
+        data JSONB NOT NULL DEFAULT '{}',
+        source VARCHAR(100),
+        ip VARCHAR(45),
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_system_events_tenant ON system_events (tenant_id);
+    CREATE INDEX IF NOT EXISTS ix_system_events_domain ON system_events (domain);
+    CREATE INDEX IF NOT EXISTS ix_system_events_severity ON system_events (severity);
+    CREATE INDEX IF NOT EXISTS ix_system_events_action ON system_events (action);
+    CREATE INDEX IF NOT EXISTS ix_system_events_created ON system_events (created_at);
+    CREATE INDEX IF NOT EXISTS ix_system_events_domain_created ON system_events (domain, created_at);
+    CREATE INDEX IF NOT EXISTS ix_system_events_tenant_created ON system_events (tenant_id, created_at);
+    """)
 
 
 def downgrade():

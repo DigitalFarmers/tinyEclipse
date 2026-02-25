@@ -14,58 +14,59 @@ depends_on = None
 
 
 def upgrade():
-    # ── Knowledge Gaps ──
-    op.create_table(
-        "knowledge_gaps",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False, index=True),
-        sa.Column("question", sa.Text, nullable=False),
-        sa.Column("category", sa.String(30), nullable=False, server_default="other"),
-        sa.Column("status", sa.String(20), nullable=False, server_default="open"),
-        sa.Column("frequency", sa.Integer, nullable=False, server_default="1"),
-        sa.Column("last_asked_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("avg_confidence", sa.Float, nullable=False, server_default="0"),
-        sa.Column("sample_conversation_id", UUID(as_uuid=True), nullable=True),
-        sa.Column("escalated", sa.Boolean, nullable=False, server_default="false"),
-        sa.Column("resolved_by", sa.String(100), nullable=True),
-        sa.Column("resolved_answer", sa.Text, nullable=True),
-        sa.Column("source_id", UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS knowledge_gaps (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        question TEXT NOT NULL,
+        category VARCHAR(30) NOT NULL DEFAULT 'other',
+        status VARCHAR(20) NOT NULL DEFAULT 'open',
+        frequency INTEGER NOT NULL DEFAULT 1,
+        last_asked_at TIMESTAMPTZ DEFAULT now(),
+        avg_confidence FLOAT NOT NULL DEFAULT 0,
+        sample_conversation_id UUID,
+        escalated BOOLEAN NOT NULL DEFAULT false,
+        resolved_by VARCHAR(100),
+        resolved_answer TEXT,
+        source_id UUID,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_knowledge_gaps_tenant ON knowledge_gaps (tenant_id);
 
-    # ── Visitor Profiles ──
-    op.create_table(
-        "visitor_profiles",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False, index=True),
-        sa.Column("visitor_id", sa.String(64), nullable=False, index=True),
-        sa.Column("name", sa.String(255), nullable=True),
-        sa.Column("email", sa.String(255), nullable=True, index=True),
-        sa.Column("phone", sa.String(50), nullable=True),
-        sa.Column("contact_id", UUID(as_uuid=True), nullable=True, index=True),
-        sa.Column("country", sa.String(2), nullable=True),
-        sa.Column("city", sa.String(100), nullable=True),
-        sa.Column("language", sa.String(10), nullable=True),
-        sa.Column("device_type", sa.String(20), nullable=True),
-        sa.Column("browser", sa.String(50), nullable=True),
-        sa.Column("total_sessions", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("total_pageviews", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("total_conversations", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("total_events", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("total_time_seconds", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("engagement_score", sa.Float, nullable=False, server_default="0"),
-        sa.Column("intent_score", sa.Float, nullable=False, server_default="0"),
-        sa.Column("loyalty_score", sa.Float, nullable=False, server_default="0"),
-        sa.Column("journey", JSONB, nullable=False, server_default="{}"),
-        sa.Column("first_seen_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("last_seen_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-
-    # Unique constraint: one profile per visitor per tenant
-    op.create_unique_constraint("uq_visitor_profile_tenant_visitor", "visitor_profiles", ["tenant_id", "visitor_id"])
+    CREATE TABLE IF NOT EXISTS visitor_profiles (
+        id UUID PRIMARY KEY,
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        visitor_id VARCHAR(64) NOT NULL,
+        name VARCHAR(255),
+        email VARCHAR(255),
+        phone VARCHAR(50),
+        contact_id UUID,
+        country VARCHAR(2),
+        city VARCHAR(100),
+        language VARCHAR(10),
+        device_type VARCHAR(20),
+        browser VARCHAR(50),
+        total_sessions INTEGER NOT NULL DEFAULT 0,
+        total_pageviews INTEGER NOT NULL DEFAULT 0,
+        total_conversations INTEGER NOT NULL DEFAULT 0,
+        total_events INTEGER NOT NULL DEFAULT 0,
+        total_time_seconds INTEGER NOT NULL DEFAULT 0,
+        engagement_score FLOAT NOT NULL DEFAULT 0,
+        intent_score FLOAT NOT NULL DEFAULT 0,
+        loyalty_score FLOAT NOT NULL DEFAULT 0,
+        journey JSONB NOT NULL DEFAULT '{}',
+        first_seen_at TIMESTAMPTZ DEFAULT now(),
+        last_seen_at TIMESTAMPTZ DEFAULT now(),
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        CONSTRAINT uq_visitor_profile_tenant_visitor UNIQUE (tenant_id, visitor_id)
+    );
+    CREATE INDEX IF NOT EXISTS ix_visitor_profiles_tenant ON visitor_profiles (tenant_id);
+    CREATE INDEX IF NOT EXISTS ix_visitor_profiles_visitor ON visitor_profiles (visitor_id);
+    CREATE INDEX IF NOT EXISTS ix_visitor_profiles_email ON visitor_profiles (email);
+    CREATE INDEX IF NOT EXISTS ix_visitor_profiles_contact ON visitor_profiles (contact_id);
+    """)
 
 
 def downgrade():

@@ -19,45 +19,52 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table('sync_groups',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('client_account_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('client_accounts.id'), nullable=False, index=True),
-        sa.Column('entity_type', sa.String(20), nullable=False),
-        sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('direction', sa.String(20), nullable=False, server_default='bidirectional'),
-        sa.Column('master_tenant_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('tenants.id'), nullable=True),
-        sa.Column('enabled', sa.Boolean(), nullable=False, server_default='true'),
-        sa.Column('config', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-    )
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS sync_groups (
+        id UUID PRIMARY KEY,
+        client_account_id UUID NOT NULL REFERENCES client_accounts(id),
+        entity_type VARCHAR(20) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        direction VARCHAR(20) NOT NULL DEFAULT 'bidirectional',
+        master_tenant_id UUID REFERENCES tenants(id),
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        config JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS ix_sync_groups_client ON sync_groups (client_account_id);
 
-    op.create_table('sync_members',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('group_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('sync_groups.id', ondelete='CASCADE'), nullable=False, index=True),
-        sa.Column('tenant_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('tenants.id'), nullable=False, index=True),
-        sa.Column('remote_id', sa.String(100), nullable=False),
-        sa.Column('sku', sa.String(100), nullable=True, index=True),
-        sa.Column('title', sa.String(500), nullable=True),
-        sa.Column('status', sa.String(20), nullable=False, server_default='pending'),
-        sa.Column('last_synced_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('local_data', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('overrides', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
+    CREATE TABLE IF NOT EXISTS sync_members (
+        id UUID PRIMARY KEY,
+        group_id UUID NOT NULL REFERENCES sync_groups(id) ON DELETE CASCADE,
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        remote_id VARCHAR(100) NOT NULL,
+        sku VARCHAR(100),
+        title VARCHAR(500),
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        last_synced_at TIMESTAMPTZ,
+        local_data JSONB NOT NULL DEFAULT '{}',
+        overrides JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_sync_members_group ON sync_members (group_id);
+    CREATE INDEX IF NOT EXISTS ix_sync_members_tenant ON sync_members (tenant_id);
+    CREATE INDEX IF NOT EXISTS ix_sync_members_sku ON sync_members (sku);
 
-    op.create_table('sync_logs',
-        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('group_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('sync_groups.id', ondelete='CASCADE'), nullable=False, index=True),
-        sa.Column('source_tenant_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('tenants.id'), nullable=False),
-        sa.Column('target_tenant_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('tenants.id'), nullable=False),
-        sa.Column('entity_type', sa.String(20), nullable=False),
-        sa.Column('action', sa.String(50), nullable=False),
-        sa.Column('changes', postgresql.JSONB(), nullable=False, server_default='{}'),
-        sa.Column('status', sa.String(20), nullable=False),
-        sa.Column('error', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
+    CREATE TABLE IF NOT EXISTS sync_logs (
+        id UUID PRIMARY KEY,
+        group_id UUID NOT NULL REFERENCES sync_groups(id) ON DELETE CASCADE,
+        source_tenant_id UUID NOT NULL REFERENCES tenants(id),
+        target_tenant_id UUID NOT NULL REFERENCES tenants(id),
+        entity_type VARCHAR(20) NOT NULL,
+        action VARCHAR(50) NOT NULL,
+        changes JSONB NOT NULL DEFAULT '{}',
+        status VARCHAR(20) NOT NULL,
+        error TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_sync_logs_group ON sync_logs (group_id);
+    """)
 
 
 def downgrade() -> None:
