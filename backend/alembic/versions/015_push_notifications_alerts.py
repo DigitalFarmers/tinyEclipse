@@ -99,9 +99,31 @@ def upgrade() -> None:
     ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_by VARCHAR(200);
     ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolution_note TEXT;
 
+    -- proactive_alerts: separate table for rule-based alert instances
+    CREATE TABLE IF NOT EXISTS proactive_alerts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        rule_id UUID REFERENCES alert_rules(id),
+        title VARCHAR(200) NOT NULL,
+        message TEXT NOT NULL,
+        alert_type VARCHAR(50) NOT NULL,
+        severity VARCHAR(20) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        source_id VARCHAR(100),
+        source_type VARCHAR(50),
+        context JSONB NOT NULL DEFAULT '{}',
+        triggered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        acknowledged_at TIMESTAMPTZ,
+        resolved_at TIMESTAMPTZ,
+        acknowledged_by VARCHAR(200),
+        resolved_by VARCHAR(200),
+        resolution_note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_proactive_alerts_tenant ON proactive_alerts (tenant_id);
+
     CREATE TABLE IF NOT EXISTS alert_notifications (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        alert_id UUID NOT NULL REFERENCES alerts(id),
+        alert_id UUID NOT NULL REFERENCES proactive_alerts(id),
         channel VARCHAR(20) NOT NULL,
         recipient VARCHAR(200) NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'pending',
