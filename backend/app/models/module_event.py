@@ -11,9 +11,10 @@ Examples:
 """
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
-from sqlalchemy import String, Integer, Text, Enum, DateTime, ForeignKey, func
+from sqlalchemy import String, Integer, Enum as SQLEnum, DateTime, ForeignKey, func, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,10 +59,10 @@ class ModuleEvent(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     module_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # jobs, shop, giftcard, forms, etc.
-    event_type: Mapped[ModuleEventType] = mapped_column(Enum(ModuleEventType), nullable=False, index=True)
+    event_type: Mapped[ModuleEventType] = mapped_column(SQLEnum(ModuleEventType), nullable=False, index=True)
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="info")  # info, success, warning, error
 
     # Flexible data payload
@@ -70,7 +71,7 @@ class ModuleEvent(Base):
     # e.g. for order_placed: {"order_id": 1234, "total": 49.99, "items": 3}
     # e.g. for form_submitted: {"form_name": "Contact", "fields": {"name": "...", "email": "..."}}
 
-    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # URL where event originated
-    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # URL where event originated
+    source_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

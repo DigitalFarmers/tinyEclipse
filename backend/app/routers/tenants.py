@@ -2,6 +2,7 @@
 import uuid
 import logging
 from datetime import datetime
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -34,9 +35,9 @@ class TenantCreate(BaseModel):
     whmcs_client_id: int
     name: str
     plan: str = "tiny"
-    domain: str | None = None
+    domain: Optional[str] = None
     environment: str = "production"
-    settings: dict = {}
+    settings: Dict = {}
     auto_scrape: bool = True
 
 
@@ -165,12 +166,12 @@ async def _auto_scrape_site(tenant_id: uuid.UUID, domain: str, clear_existing: b
 
 
 class TenantUpdate(BaseModel):
-    name: str | None = None
-    plan: str | None = None
-    status: str | None = None
-    domain: str | None = None
-    environment: str | None = None
-    settings: dict | None = None
+    name: Optional[str] = None
+    plan: Optional[str] = None
+    status: Optional[str] = None
+    domain: Optional[str] = None
+    environment: Optional[str] = None
+    settings: Optional[Dict] = None
 
 
 class TenantResponse(BaseModel):
@@ -179,9 +180,9 @@ class TenantResponse(BaseModel):
     name: str
     plan: str
     status: str
-    domain: str | None
+    domain: Optional[str]
     environment: str = "production"
-    settings: dict
+    settings: Dict
     created_at: str
 
 
@@ -449,7 +450,10 @@ async def update_tenant(
     if body.environment is not None:
         tenant.environment = TenantEnvironment(body.environment)
     if body.settings is not None:
-        tenant.settings = body.settings
+        # Merge instead of replace — preserves existing settings not sent in this update
+        existing = tenant.settings or {}
+        existing.update(body.settings)
+        tenant.settings = existing
 
     await db.flush()
 

@@ -1,3 +1,5 @@
+from typing import List
+
 import httpx
 import trafilatura
 from bs4 import BeautifulSoup
@@ -42,7 +44,7 @@ async def scrape_url(url: str) -> dict:
     }
 
 
-async def scrape_sitemap(base_url: str, max_pages: int = 50) -> list[str]:
+async def scrape_sitemap(base_url: str, max_pages: int = 50) -> List[str]:
     """Try to discover pages from a sitemap.xml.
 
     Returns list of URLs found.

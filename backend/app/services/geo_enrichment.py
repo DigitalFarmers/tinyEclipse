@@ -13,6 +13,7 @@ This runs as a background enrichment task that builds deep local knowledge.
 """
 import uuid
 import logging
+from typing import Optional, Dict
 import httpx
 from datetime import datetime, timezone
 
@@ -78,7 +79,7 @@ async def enrich_tenant_geo(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     }
 
 
-async def _fetch_site_location(tenant: Tenant) -> dict | None:
+async def _fetch_site_location(tenant: Tenant) -> Optional[Dict]:
     """Try to extract location info from the WordPress site via multiple endpoints."""
     if not tenant.domain:
         return None
@@ -159,7 +160,7 @@ def _guess_timezone(country: str) -> str:
     return tz_map.get(country, "Europe/Brussels")
 
 
-def _build_regional_context(city: str, country: str, postcode: str | None) -> dict:
+def _build_regional_context(city: str, country: str, postcode: Optional[str]) -> Dict:
     """Build regional knowledge based on city and country."""
     context = {
         "city": city,
@@ -270,7 +271,7 @@ def _build_time_context(tz: str) -> dict:
         return {"timezone": tz}
 
 
-def _build_neighborhood_desc(city: str, country: str, postcode: str | None, geo: dict) -> str:
+def _build_neighborhood_desc(city: str, country: str, postcode: Optional[str], geo: Dict) -> str:
     """Build a natural language description of the business location."""
     parts = []
     regional = geo.get("regional_context", {})
@@ -335,7 +336,7 @@ def _calculate_calibration_score(geo: dict, tenant: Tenant) -> float:
 
     # Module awareness (15%)
     max_points += 0.15
-    modules = tenant.modules if tenant.modules else []
+    modules = tenant.site_modules if tenant.site_modules else []
     if len(modules) >= 1:
         score += 0.05
     if len(modules) >= 3:

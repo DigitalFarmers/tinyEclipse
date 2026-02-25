@@ -144,6 +144,14 @@ export async function getAnalytics(tenantId: string, hours = 24) {
   return apiFetch(`/api/track/analytics/${tenantId}?hours=${hours}`);
 }
 
+export async function getDeepAnalytics(tenantId: string, preset?: string, dateFrom?: string, dateTo?: string) {
+  const params = new URLSearchParams();
+  if (preset) params.set('preset', preset);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  return apiFetch(`/api/track/deep/${tenantId}?${params.toString()}`);
+}
+
 export async function getVisitorJourney(sessionId: string) {
   return apiFetch(`/api/track/journey/${sessionId}`);
 }
@@ -477,5 +485,152 @@ export async function updateTenantGeo(tenantId: string, data: Record<string, str
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+// ─── AI Brain ───
+
+export async function getBrainHealth(tenantId: string) {
+  return apiFetch(`/api/admin/brain/health/${tenantId}`);
+}
+
+export async function getBrainGaps(tenantId: string, status?: string) {
+  const qs = status ? `?status=${status}` : "";
+  return apiFetch(`/api/admin/brain/gaps/${tenantId}${qs}`);
+}
+
+export async function resolveGap(gapId: string, answer: string) {
+  return apiFetch(`/api/admin/brain/gaps/${gapId}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ answer, resolved_by: "admin", create_source: true }),
+  });
+}
+
+export async function dismissGap(gapId: string) {
+  return apiFetch(`/api/admin/brain/gaps/${gapId}/dismiss`, { method: "POST" });
+}
+
+export async function getBrainSelfReport(tenantId: string) {
+  return apiFetch(`/api/admin/brain/self-report/${tenantId}`);
+}
+
+export async function getVisitorProfiles(tenantId: string, sort = "last_seen_at") {
+  return apiFetch(`/api/admin/brain/visitors/${tenantId}?sort=${sort}`);
+}
+
+export async function getVisitorDetail(tenantId: string, profileId: string) {
+  return apiFetch(`/api/admin/brain/visitors/${tenantId}/${profileId}`);
+}
+
+// ─── Technical Registry ───
+
+export async function getRegistryTimeline(tenantId?: string, domain?: string, severity?: string, hours = 168) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenant_id", tenantId);
+  if (domain) params.set("domain", domain);
+  if (severity) params.set("severity", severity);
+  params.set("hours", String(hours));
+  return apiFetch(`/api/admin/registry/timeline?${params}`);
+}
+
+export async function getRegistryAnomalies(tenantId?: string) {
+  const qs = tenantId ? `?tenant_id=${tenantId}` : "";
+  return apiFetch(`/api/admin/registry/anomalies${qs}`);
+}
+
+export async function getRegistryStats(tenantId?: string, hours = 24) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenant_id", tenantId);
+  params.set("hours", String(hours));
+  return apiFetch(`/api/admin/registry/stats?${params}`);
+}
+
+// ─── Server Hardening ───
+
+export async function getSecurityAudit(tenantId?: string) {
+  const qs = tenantId ? `?tenant_id=${tenantId}` : "";
+  return apiFetch(`/api/admin/hardening/audit${qs}`);
+}
+
+export async function getResourceOverview() {
+  return apiFetch(`/api/admin/hardening/resources`);
+}
+
+export async function getOptimizationSuggestions() {
+  return apiFetch(`/api/admin/hardening/optimize`);
+}
+
+// ─── Portfolio — Multi-Domain Command Center ───
+
+export async function getAgencyOverview() {
+  return apiFetch(`/api/admin/portfolio/overview`);
+}
+
+export async function getClientPortfolio(clientAccountId: string) {
+  return apiFetch(`/api/admin/portfolio/client/${clientAccountId}`);
+}
+
+export async function getDomainComparison(clientAccountId: string) {
+  return apiFetch(`/api/admin/portfolio/compare/${clientAccountId}`);
+}
+
+export async function getUnifiedTimeline(clientAccountId: string, hours = 168, limit = 50) {
+  return apiFetch(`/api/admin/portfolio/timeline/${clientAccountId}?hours=${hours}&limit=${limit}`);
+}
+
+// ─── AI Self-Review ───
+
+export async function getSelfReviewStats(tenantId: string, days = 30) {
+  return apiFetch(`/api/admin/brain/self-review/${tenantId}?days=${days}`);
+}
+
+// ─── Mother Brain ───
+
+export async function getMotherBrainConfig(tenantId: string) {
+  return apiFetch(`/api/sites/config/${tenantId}`);
+}
+
+export async function updateTenantSettings(tenantId: string, settings: Record<string, any>) {
+  return apiFetch(`/api/admin/tenants/${tenantId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ settings }),
+  });
+}
+
+export async function getPluginVersion() {
+  return apiFetch(`/api/sites/plugin-version`);
+}
+
+// ─── Bulk Actions ───
+
+export async function getBulkActions(clientAccountId: string) {
+  return apiFetch(`/api/admin/bulk/actions/${clientAccountId}`);
+}
+
+export async function triggerBulkReindex(clientAccountId: string, tenantIds?: string[]) {
+  return apiFetch(`/api/admin/bulk/reindex`, {
+    method: "POST",
+    body: JSON.stringify({ client_account_id: clientAccountId, tenant_ids: tenantIds }),
+  });
+}
+
+export async function triggerKnowledgeTransfer(fromTenantId: string, toTenantId: string, sourceTypes?: string[]) {
+  return apiFetch(`/api/admin/bulk/transfer`, {
+    method: "POST",
+    body: JSON.stringify({ from_tenant_id: fromTenantId, to_tenant_id: toTenantId, source_types: sourceTypes }),
+  });
+}
+
+export async function triggerBulkCommand(clientAccountId: string, commandType: string, payload: any = {}, tenantIds?: string[]) {
+  return apiFetch(`/api/admin/bulk/command`, {
+    method: "POST",
+    body: JSON.stringify({ client_account_id: clientAccountId, command_type: commandType, payload, tenant_ids: tenantIds }),
+  });
+}
+
+export async function triggerBulkGapResolve(clientAccountId: string, category: string, answer: string) {
+  return apiFetch(`/api/admin/bulk/resolve-gaps`, {
+    method: "POST",
+    body: JSON.stringify({ client_account_id: clientAccountId, category, answer }),
   });
 }

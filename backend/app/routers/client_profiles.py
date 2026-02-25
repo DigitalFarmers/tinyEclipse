@@ -8,6 +8,7 @@ Endpoints:
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -253,10 +254,10 @@ async def get_client_profile(
 
 
 class UpdateClientRequest(BaseModel):
-    email: str | None = None
-    name: str | None = None
-    company: str | None = None
-    phone: str | None = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    company: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @router.patch("/{whmcs_client_id}")

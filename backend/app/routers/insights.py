@@ -12,6 +12,7 @@ Endpoints:
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_, case
@@ -254,7 +255,7 @@ Wees concreet en specifiek, geen vage adviezen. Maximaal 5 suggesties."""
         }
 
 
-def _period_range(period: str) -> tuple[datetime, datetime]:
+def _period_range(period: str) -> Tuple[datetime, datetime]:
     """Get start/end datetime for a period."""
     now = datetime.now(timezone.utc)
     if period == "day":
@@ -476,6 +477,104 @@ Geef terug als JSON:
             "needs_attention": [{"name": s["name"], "alerts": s["unresolved_alerts"], "uptime": s["uptime_pct"]} for s in needs_attention],
         },
         "ai": ai_global,
+    }
+
+
+@admin_router.get("/client/{whmcs_client_id}")
+async def admin_client_insights(
+    whmcs_client_id: int,
+    period: str = Query("week", pattern="^(day|week|month|year)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cross-tenant insights for a specific WHMCS client — aggregates all their sites."""
+    since, until = _period_range(period)
+
+    # Get all tenants for this client
+    tenants_q = await db.execute(
+        select(Tenant).where(
+            and_(Tenant.whmcs_client_id == whmcs_client_id, Tenant.status == TenantStatus.active,
+                 Tenant.environment == TenantEnvironment.production)
+        ).order_by(Tenant.name)
+    )
+    tenants = tenants_q.scalars().all()
+    if not tenants:
+        raise HTTPException(status_code=404, detail="No tenants found for this client")
+
+    all_stats = []
+    for tenant in tenants:
+        try:
+            stats = await _gather_tenant_stats(db, tenant, since, until)
+            all_stats.append(stats)
+        except Exception as e:
+            logger.warning(f"Failed to gather stats for {tenant.name}: {e}")
+
+    # Aggregates
+    total_sessions = sum(s["sessions"] for s in all_stats)
+    total_conversations = sum(s["conversations"] for s in all_stats)
+    total_escalations = sum(s["escalations"] for s in all_stats)
+    total_alerts = sum(s["alerts"] for s in all_stats)
+    total_unresolved = sum(s["unresolved_alerts"] for s in all_stats)
+
+    # Client name from first tenant's client account
+    client_name = ""
+    ca_q = await db.execute(select(ClientAccount).where(ClientAccount.whmcs_client_id == whmcs_client_id))
+    ca = ca_q.scalar_one_or_none()
+    if ca:
+        client_name = ca.company_name or ca.name or ""
+
+    # AI summary scoped to this client
+    prompt = f"""Je bent de AI-analist van TinyEclipse voor Mo (superadmin).
+Geef een {period} samenvatting voor klant "{client_name}" (WHMCS #{whmcs_client_id}):
+
+Sites: {', '.join(f"{s['name']} ({s['domain']})" for s in all_stats)}
+Totaal bezoekers: {total_sessions}
+Totaal gesprekken: {total_conversations}
+Totaal escalaties: {total_escalations}
+Totaal alerts: {total_alerts} ({total_unresolved} onopgelost)
+
+Per site:
+{chr(10).join(f"- {s['name']}: {s['sessions']} bezoekers ({s['sessions_change']:+.1f}%), {s['conversations']} chats, {s['unresolved_alerts']} alerts" for s in all_stats)}
+
+Geef terug als JSON:
+{{
+  "headline": "Korte samenvatting",
+  "summary": "2-3 zinnen",
+  "highlights": ["positief punt"],
+  "concerns": ["aandachtspunt"],
+  "opportunities": ["verkoopkans voor Mo"],
+  "client_health": 0-100
+}}"""
+
+    try:
+        groq = AsyncGroq(api_key=settings.groq_api_key)
+        response = await groq.chat.completions.create(
+            model=settings.groq_chat_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4, max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+        import json
+        ai = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        logger.error(f"Client insights AI failed: {e}")
+        ai = {"headline": f"{len(all_stats)} sites voor {client_name}", "summary": "", "highlights": [], "concerns": [], "opportunities": [], "client_health": 50}
+
+    return {
+        "whmcs_client_id": whmcs_client_id,
+        "client_name": client_name,
+        "period": period,
+        "from": since.isoformat(),
+        "to": until.isoformat(),
+        "totals": {
+            "sites": len(all_stats),
+            "sessions": total_sessions,
+            "conversations": total_conversations,
+            "escalations": total_escalations,
+            "alerts": total_alerts,
+            "unresolved_alerts": total_unresolved,
+        },
+        "sites": all_stats,
+        "ai": ai,
     }
 
 

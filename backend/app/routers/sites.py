@@ -6,6 +6,7 @@ import uuid
 import hashlib
 import logging
 from datetime import datetime, timezone
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
@@ -31,22 +32,93 @@ admin_router = APIRouter(
 )
 
 
-# ─── Public: Widget Config ───
+# ─── Mother Brain: Central Live Config ───
+# Every widget fetches this on boot. Change it here → all bots update instantly.
+
+MOTHER_BRAIN_VERSION = "1.0.0"
+INTELLIGENCE_VERSION = "2.1.0"
+PLUGIN_VERSION = "5.1.0"
+
+# Default feature flags per plan (can be overridden per tenant via settings)
+_DEFAULT_FEATURES = {
+    "tiny": {
+        "chat": True,
+        "tracking": False,
+        "monitoring": False,
+        "proactive_help": False,
+        "self_review": True,
+        "admin_identity": True,
+        "update_guard": False,
+        "knowledge_gaps": True,
+        "visitor_profiles": False,
+        "multi_language": True,
+        "escalation": True,
+        "consent_required": True,
+    },
+    "pro": {
+        "chat": True,
+        "tracking": True,
+        "monitoring": False,
+        "proactive_help": True,
+        "self_review": True,
+        "admin_identity": True,
+        "update_guard": True,
+        "knowledge_gaps": True,
+        "visitor_profiles": True,
+        "multi_language": True,
+        "escalation": True,
+        "consent_required": True,
+    },
+    "pro_plus": {
+        "chat": True,
+        "tracking": True,
+        "monitoring": True,
+        "proactive_help": True,
+        "self_review": True,
+        "admin_identity": True,
+        "update_guard": True,
+        "knowledge_gaps": True,
+        "visitor_profiles": True,
+        "multi_language": True,
+        "escalation": True,
+        "consent_required": True,
+    },
+}
+
 
 @public_router.get("/config/{tenant_id}")
 async def get_widget_config(tenant_id: str, db: AsyncSession = Depends(get_db)):
-    """Public endpoint — widget fetches its config from here. No auth needed."""
+    """Mother Brain — central live config for all deployed widgets.
+    The widget fetches this on every boot. Changes here = instant effect on all bots.
+    No auth needed — called by the widget JS from any site."""
     tenant = await db.get(Tenant, uuid.UUID(tenant_id))
     if not tenant or tenant.status != TenantStatus.active:
         raise HTTPException(status_code=404, detail="Site not found or inactive")
 
     settings = tenant.settings or {}
+    plan = tenant.plan.value
+
+    # Merge default features with per-tenant overrides from settings
+    base_features = _DEFAULT_FEATURES.get(plan, _DEFAULT_FEATURES["tiny"]).copy()
+    tenant_feature_overrides = settings.get("feature_flags", {})
+    features = {**base_features, **tenant_feature_overrides}
 
     return {
+        # ─── Identity ───
         "tenant_id": str(tenant.id),
         "name": tenant.name,
         "domain": tenant.domain,
-        "plan": tenant.plan.value,
+        "plan": plan,
+        "status": tenant.status.value,
+
+        # ─── Mother Brain versioning ───
+        "mother_brain": {
+            "version": MOTHER_BRAIN_VERSION,
+            "intelligence_version": INTELLIGENCE_VERSION,
+            "plugin_version": PLUGIN_VERSION,
+        },
+
+        # ─── Widget appearance (remotely controllable) ───
         "widget": {
             "enabled": settings.get("widget_enabled", True),
             "color": settings.get("widget_color", "#6C3CE1"),
@@ -55,14 +127,45 @@ async def get_widget_config(tenant_id: str, db: AsyncSession = Depends(get_db)):
             "lang": settings.get("widget_lang", "nl"),
             "welcome_message": settings.get("widget_welcome", None),
             "proactive_delay_ms": settings.get("proactive_delay_ms", 30000),
-            "consent_required": settings.get("consent_required", True),
+            "consent_required": features.get("consent_required", True),
+            "show_branding": settings.get("widget_show_branding", True),
+            "avatar_url": settings.get("widget_avatar_url", None),
+            "offline_message": settings.get("widget_offline_message", None),
         },
-        "features": {
-            "chat": True,
-            "tracking": tenant.plan.value in ("pro", "pro_plus"),
-            "monitoring": tenant.plan.value == "pro_plus",
-            "proactive_help": tenant.plan.value in ("pro", "pro_plus"),
+
+        # ─── Feature flags (centrally togglable) ───
+        "features": features,
+
+        # ─── Supported languages ───
+        "languages": settings.get("supported_languages", ["nl", "en", "fr"]),
+        "default_language": settings.get("widget_lang", "nl"),
+
+        # ─── Behavioral tuning ───
+        "tuning": {
+            "confidence_threshold": settings.get("confidence_threshold", 0.4),
+            "escalation_threshold": settings.get("escalation_threshold", 0.3),
+            "max_history_messages": settings.get("max_history_messages", 10),
+            "typing_delay_ms": settings.get("typing_delay_ms", 800),
         },
+    }
+
+
+@public_router.get("/plugin-version")
+async def get_plugin_version():
+    """Mother Brain — plugin version registry.
+    WP plugins check this to know if a new version is available.
+    Update PLUGIN_VERSION above to trigger auto-updates on all sites."""
+    return {
+        "version": PLUGIN_VERSION,
+        "tested": "6.7",
+        "requires_php": "7.4",
+        "released": "2026-02-25",
+        "download_url": f"https://api.tinyeclipse.digitalfarmers.be/releases/tinyeclipse-connector-{PLUGIN_VERSION}.zip",
+        "info_url": "https://tinyeclipse.digitalfarmers.be",
+        "description": "TinyEclipse AI assistant connector — powered by the Mother Brain cloud. Auto-updates, knowledge sync, site protection, and full AI intelligence.",
+        "changelog": f"<h4>{PLUGIN_VERSION}</h4><ul><li>Mother Brain live cloud config</li><li>Admin identity awareness</li><li>Update Guard with auto-rollback</li><li>WPML-aware language detection</li><li>AI Self-Review after every interaction</li></ul>",
+        "intelligence_version": INTELLIGENCE_VERSION,
+        "mother_brain_version": MOTHER_BRAIN_VERSION,
     }
 
 
@@ -137,9 +240,9 @@ class AutoOnboardRequest(BaseModel):
     tenant_id: str = ""
     generated_at: str = ""
     connector_version: str = ""
-    plugins: list[str] = []
+    plugins: List[str] = []
     plugin_count: int = 0
-    modules: list[str] = []
+    modules: List[str] = []
 
 
 @public_router.post("/auto-onboard")
@@ -248,7 +351,7 @@ class SiteRegister(BaseModel):
     name: str
     domain: str
     plan: str = "tiny"
-    whmcs_client_id: int | None = None
+    whmcs_client_id: Optional[int] = None
     auto_setup: bool = True  # Auto-setup monitoring + scraping
     settings: dict = {}
 

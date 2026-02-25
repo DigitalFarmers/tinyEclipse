@@ -31,6 +31,7 @@ PRO+ (premium):
 """
 
 from dataclasses import dataclass
+from typing import Dict
 
 
 @dataclass
@@ -64,7 +65,7 @@ class PlanFeatures:
     price_label: str
 
 
-PLAN_FEATURES: dict[str, PlanFeatures] = {
+PLAN_FEATURES: Dict[str, PlanFeatures] = {
     "tiny": PlanFeatures(
         monthly_chat_limit=50,
         knowledge_pages_limit=5,

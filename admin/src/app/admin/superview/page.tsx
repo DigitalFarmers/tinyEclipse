@@ -166,9 +166,30 @@ export default function AdminSuperviewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-white/40">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-        <span className="ml-3 text-sm">Superview laden...</span>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5"><div className="h-6 w-48 animate-pulse rounded bg-white/5" /><div className="h-3 w-32 animate-pulse rounded bg-white/[0.03]" /></div>
+          <div className="h-8 w-24 animate-pulse rounded-lg bg-white/5" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="h-2 w-16 rounded bg-white/5" />
+              <div className="mt-2 h-5 w-10 rounded bg-white/5" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02] p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-white/5" />
+                <div className="flex-1 space-y-1.5"><div className="h-3.5 w-36 rounded bg-white/5" /><div className="h-2.5 w-52 rounded bg-white/[0.03]" /></div>
+                <div className="h-5 w-16 rounded-full bg-white/5" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -184,6 +205,7 @@ export default function AdminSuperviewPage() {
     if (filter === "warning") return t.health === "warning" || t.health === "critical";
     if (filter === "production") return t.environment !== "staging";
     if (filter === "staging") return t.environment === "staging";
+    if (filter === "no_modules") return t.modules.length === 0;
     return true;
   });
 
@@ -255,6 +277,7 @@ export default function AdminSuperviewPage() {
             { key: "warning", label: "🟡 Warning", count: data.tenants.filter(t => t.health === "warning" || t.health === "critical").length },
             { key: "production", label: "🟢 Productie", count: data.tenants.filter(t => t.environment !== "staging").length },
             { key: "staging", label: "🟠 Staging", count: data.tenants.filter(t => t.environment === "staging").length },
+            { key: "no_modules", label: "⚪ Geen modules", count: data.tenants.filter(t => t.modules.length === 0).length },
           ].map((f) => (
             <button
               key={f.key}
@@ -277,8 +300,10 @@ export default function AdminSuperviewPage() {
           const HealthIcon = hc.icon;
           const isExpanded = expanded[t.tenant_id];
 
+          const isTiny = t.plan === "tiny";
+
           return (
-            <div key={t.tenant_id} className={`rounded-2xl border transition ${hc.border} ${isStaging ? "opacity-70" : ""}`}>
+            <div key={t.tenant_id} className={`rounded-2xl border transition ${hc.border} ${isStaging ? "opacity-60" : ""} ${isTiny && t.health === "healthy" ? "opacity-50 hover:opacity-80" : ""}`}>
               {/* Main Row */}
               <div className="p-4">
                 <div className="flex items-center gap-4">
@@ -344,12 +369,17 @@ export default function AdminSuperviewPage() {
                     </span>
                   </div>
 
-                  {/* Module badges (icons only) */}
-                  <div className="hidden md:flex gap-1">
-                    {t.modules.map((mod) => (
-                      <span key={mod} className="text-sm" title={mod}>{MODULE_EMOJI[mod] || "🧩"}</span>
-                    ))}
-                  </div>
+                  {/* Module badges (icons only) — only show if modules exist */}
+                  {t.modules.length > 0 && (
+                    <div className="hidden md:flex gap-1">
+                      {t.modules.map((mod) => (
+                        <span key={mod} className="text-sm" title={mod}>{MODULE_EMOJI[mod] || "🧩"}</span>
+                      ))}
+                    </div>
+                  )}
+                  {t.modules.length === 0 && (
+                    <span className="hidden md:block text-[9px] text-white/15 italic">geen modules</span>
+                  )}
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5">

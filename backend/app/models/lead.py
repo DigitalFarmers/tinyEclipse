@@ -2,8 +2,9 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import String, Enum, DateTime, ForeignKey, Text, func
+from sqlalchemy import String, Enum as SQLEnum, DateTime, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,14 +24,14 @@ class Lead(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     session_id: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
-    conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source: Mapped[LeadSource] = mapped_column(Enum(LeadSource), nullable=False, default=LeadSource.chat)
-    page_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[LeadSource] = mapped_column(SQLEnum(LeadSource), nullable=False, default=LeadSource.chat)
+    page_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant")

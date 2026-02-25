@@ -106,6 +106,7 @@ export default function ClientDetailPage() {
   const [whmcs, setWhmcs] = useState<WHMCSData | null>(null);
   const [loading, setLoading] = useState(true);
   const [rescraping, setRescraping] = useState<string | null>(null);
+  const [billing, setBilling] = useState<any>(null);
 
   useEffect(() => { loadData(); }, [whmcsId]);
 
@@ -123,6 +124,12 @@ export default function ClientDetailPage() {
       ]);
 
       if (eclipseRes.ok) setData(await eclipseRes.json());
+
+      // Billing status
+      try {
+        const billingRes = await fetch(`${API_URL}/api/admin/whmcs/billing/${whmcsId}`, { headers, cache: "no-store" });
+        if (billingRes.ok) setBilling(await billingRes.json());
+      } catch {}
 
       const whmcsData: WHMCSData = { client: null, products: [], invoices: [], domains: [] };
       if (clientRes?.ok) whmcsData.client = await clientRes.json();
@@ -201,12 +208,31 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCard icon={Globe} label="Projecten" value={t.production} sub={t.staging > 0 ? `+${t.staging} staging` : undefined} color="brand" />
         <StatCard icon={MessageSquare} label="Chats 24u" value={t.chats_24h} sub={`${t.chats_7d} in 7d`} color="blue" />
         <StatCard icon={ShieldAlert} label="Open Alerts" value={t.open_alerts} color={t.open_alerts > 0 ? "red" : "green"} />
         <StatCard icon={Database} label="Kennisbronnen" value={t.total_sources} color="purple" />
+        {billing?.summary && (
+          <StatCard icon={CreditCard} label="MRR" value={`\u20AC${billing.summary.monthly_revenue}`} sub={billing.summary.billing_healthy ? "Betaald" : `${billing.summary.overdue_invoices} achterstallig`} color={billing.summary.billing_healthy ? "green" : "red"} />
+        )}
       </div>
+
+      {/* Billing Alert */}
+      {billing?.summary && !billing.summary.billing_healthy && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <Receipt className="h-5 w-5 text-red-400" />
+            <div>
+              <p className="text-sm font-semibold text-red-400">Betalingsachterstand</p>
+              <p className="text-xs text-white/40">
+                {billing.summary.overdue_invoices} achterstallige factuur{billing.summary.overdue_invoices !== 1 ? "en" : ""} ·{" "}
+                {billing.summary.unpaid_invoices} onbetaald totaal
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two Column: WHMCS Client Info + Products */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -464,7 +490,7 @@ export default function ClientDetailPage() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: number; sub?: string; color: string }) {
+function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: number | string; sub?: string; color: string }) {
   const colorMap: Record<string, string> = {
     brand: "border-brand-500/20 bg-brand-500/5", blue: "border-blue-500/20 bg-blue-500/5",
     green: "border-green-500/20 bg-green-500/5", red: "border-red-500/20 bg-red-500/5",

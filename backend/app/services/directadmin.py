@@ -10,8 +10,10 @@ Provides:
 
 Uses DirectAdmin's JSON API (CMD_API_ endpoints).
 """
+from __future__ import annotations
 import logging
 from datetime import datetime, timezone
+from typing import Optional, Dict, List, Union, Tuple
 
 import httpx
 
@@ -20,13 +22,13 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def _get_auth() -> tuple[str, str, str]:
+def _get_auth() -> Tuple[str, str, str]:
     """Get DirectAdmin connection details."""
     settings = get_settings()
     return settings.directadmin_url, settings.directadmin_user, settings.directadmin_login_key
 
 
-async def _da_request(endpoint: str, params: dict | None = None) -> dict | list | None:
+async def _da_request(endpoint: str, params: Optional[Dict] = None) -> Optional[Union[Dict, List]]:
     """Make an authenticated request to DirectAdmin API."""
     base_url, user, key = _get_auth()
     if not base_url or not user or not key:

@@ -2,6 +2,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from functools import lru_cache
+from typing import List
 
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select, delete
@@ -23,14 +24,14 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     """Split text into overlapping chunks by character count."""
     if not text or not text.strip():
         return []
 
     words = text.split()
     chunks = []
-    current_chunk: list[str] = []
+    current_chunk: List[str] = []
     current_length = 0
 
     for word in words:

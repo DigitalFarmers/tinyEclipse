@@ -3,6 +3,7 @@ Calibration API — Geo enrichment, calibration scoring, and tenant context mana
 """
 import uuid
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -24,13 +25,13 @@ router = APIRouter(
 
 
 class GeoUpdateRequest(BaseModel):
-    city: str | None = None
-    country: str | None = None
-    postcode: str | None = None
-    address: str | None = None
-    timezone: str | None = None
-    business_type: str | None = None
-    opening_hours: str | None = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    postcode: Optional[str] = None
+    address: Optional[str] = None
+    timezone: Optional[str] = None
+    business_type: Optional[str] = None
+    opening_hours: Optional[str] = None
 
 
 @router.post("/{tenant_id}/enrich")
@@ -106,14 +107,14 @@ async def get_calibration(tenant_id: str, db: AsyncSession = Depends(get_db)):
         "time_context": geo.get("time_context"),
         "knowledge_sources": len(tenant.sources) if tenant.sources else 0,
         "indexed_sources": len([s for s in (tenant.sources or []) if s.status == "indexed"]),
-        "modules": len(tenant.modules) if tenant.modules else 0,
+        "modules": len(tenant.site_modules) if tenant.site_modules else 0,
         "breakdown": {
             "location": bool(geo.get("city") and geo.get("country")),
             "timezone": bool(geo.get("timezone")),
             "regional_knowledge": bool(geo.get("regional_context")),
             "neighborhood": bool(geo.get("neighborhood_description")),
             "knowledge_base": len([s for s in (tenant.sources or []) if s.status == "indexed"]) >= 5,
-            "modules_detected": len(tenant.modules or []) >= 1,
+            "modules_detected": len(tenant.site_modules or []) >= 1,
         },
     }
 
@@ -134,7 +135,7 @@ async def list_calibrations(db: AsyncSession = Depends(get_db)):
             "city": (t.geo_context or {}).get("city"),
             "country": (t.geo_context or {}).get("country"),
             "sources": len(t.sources) if t.sources else 0,
-            "modules": len(t.modules) if t.modules else 0,
+            "modules": len(t.site_modules) if t.site_modules else 0,
         }
         for t in tenants
     ]

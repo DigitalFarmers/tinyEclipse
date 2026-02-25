@@ -12,6 +12,7 @@ WordPress plugins call POST /api/module-events/{tenant_id} to report:
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -56,9 +57,9 @@ class ModuleEventCreate(BaseModel):
     module_type: str  # jobs, shop, giftcard, forms, mail, booking
     event_type: str  # job_application, order_placed, form_submitted, etc.
     title: str
-    description: str | None = None
-    data: dict = {}
-    source_url: str | None = None
+    description: Optional[str] = None
+    data: Dict = {}
+    source_url: Optional[str] = None
 
 
 @router.post("/{tenant_id}", status_code=201)
@@ -156,8 +157,8 @@ async def report_module_event(
 async def get_module_events(
     tenant_id: str,
     hours: int = Query(24, ge=1, le=720),
-    module_type: str | None = Query(None),
-    event_type: str | None = Query(None),
+    module_type: Optional[str] = Query(None),
+    event_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):

@@ -6,6 +6,7 @@ Matches on email (primary), phone (secondary), or creates new.
 import uuid
 import logging
 from datetime import datetime, timezone
+from typing import Optional, Union
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,14 +19,14 @@ logger = logging.getLogger(__name__)
 async def find_or_create_contact(
     db: AsyncSession,
     tenant_id: uuid.UUID,
-    email: str | None = None,
-    phone: str | None = None,
-    name: str | None = None,
-    company: str | None = None,
-    city: str | None = None,
-    country: str | None = None,
-    address: str | None = None,
-    language: str | None = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    name: Optional[str] = None,
+    company: Optional[str] = None,
+    city: Optional[str] = None,
+    country: Optional[str] = None,
+    address: Optional[str] = None,
+    language: Optional[str] = None,
     source: str = "unknown",
 ) -> Contact:
     """
@@ -103,7 +104,7 @@ async def increment_contact_stat(
     db: AsyncSession,
     contact_id: uuid.UUID,
     stat: str,
-    amount: int | float = 1,
+    amount: Union[int, float] = 1,
 ):
     """Increment a stat on a contact (total_orders, total_spent, etc.)."""
     contact = await db.get(Contact, contact_id)
@@ -114,7 +115,7 @@ async def increment_contact_stat(
     contact.last_seen_at = datetime.now(timezone.utc)
 
 
-def _normalize_phone(phone: str | None) -> str | None:
+def _normalize_phone(phone: Optional[str]) -> Optional[str]:
     """Normalize phone number for matching."""
     if not phone:
         return None

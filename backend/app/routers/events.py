@@ -6,6 +6,7 @@ The single source of truth for "what happened on my website?"
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, and_, func, or_
@@ -44,7 +45,7 @@ async def get_events_timeline(
     tenant_id: str,
     hours: int = Query(24, ge=1, le=720),
     limit: int = Query(50, ge=1, le=200),
-    event_type: str | None = Query(None, description="Filter: chat, alert, visit, lead, sale, contact"),
+    event_type: Optional[str] = Query(None, description="Filter: chat, alert, visit, lead, sale, contact"),
     db: AsyncSession = Depends(get_db),
 ):
     """

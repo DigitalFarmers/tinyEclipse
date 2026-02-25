@@ -1,6 +1,7 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import String, Enum, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -26,16 +27,16 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Visitor Identity — proactive fingerprinting
-    visitor_ip: Mapped[str | None] = mapped_column(String(45), nullable=True, index=True)
-    visitor_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    visitor_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    visitor_device: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    visitor_browser: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    visitor_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    visitor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    visitor_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
-    visitor_identity: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    visitor_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, index=True)
+    visitor_country: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    visitor_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    visitor_device: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    visitor_browser: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    visitor_language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    visitor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    visitor_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    visitor_identity: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="conversations")

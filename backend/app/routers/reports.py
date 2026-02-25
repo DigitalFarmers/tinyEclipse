@@ -2,6 +2,7 @@
 PRO+ Reports API — AI-driven site health reports, competitive analysis, insights.
 The intelligence layer that makes Eclipse invaluable.
 """
+from __future__ import annotations
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta

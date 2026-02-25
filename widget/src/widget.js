@@ -12,7 +12,14 @@
   const POSITION = SCRIPT_TAG?.getAttribute("data-position") || "bottom-right";
   const THEME_COLOR = SCRIPT_TAG?.getAttribute("data-color") || "#6C3CE1";
   const BRAND_NAME = SCRIPT_TAG?.getAttribute("data-name") || "AI Assistant";
-  const LANG = SCRIPT_TAG?.getAttribute("data-lang") || "nl";
+  const DATA_LANG = SCRIPT_TAG?.getAttribute("data-lang") || "nl";
+  // Detect ACTUAL page language from HTML lang attribute (WPML/Polylang set this correctly)
+  const PAGE_LANG = (document.documentElement.lang || "").split("-")[0].toLowerCase() || DATA_LANG;
+  const LANG = PAGE_LANG || DATA_LANG;
+  // Admin identity (injected by WP plugin when logged-in admin/editor views frontend)
+  const ADMIN_ROLE = SCRIPT_TAG?.getAttribute("data-admin-role") || null;
+  const ADMIN_NAME = SCRIPT_TAG?.getAttribute("data-admin-name") || null;
+  const ADMIN_EMAIL = SCRIPT_TAG?.getAttribute("data-admin-email") || null;
   const API_BASE =
     SCRIPT_TAG?.getAttribute("data-api") ||
     SCRIPT_TAG?.src.replace(/\/widget\/v1\/widget\.js.*/, "") ||
@@ -116,6 +123,16 @@
   let idleTimer = null;
   let idleSeconds = 0;
   let pageUpdateInterval = null;
+
+  // ─── Mother Brain: Live cloud config (overrides data-attributes) ───
+  let cloudConfig = null;
+  let featureFlags = {
+    chat: true, tracking: true, proactive_help: true,
+    self_review: true, admin_identity: true, consent_required: true,
+  };
+  let tuning = {
+    typing_delay_ms: 800,
+  };
 
   // ─── IDs ───
   function getOrCreateSessionId() {
@@ -883,6 +900,8 @@
           session_id: sessionId,
           message: message,
           channel: "widget",
+          page_language: PAGE_LANG,
+          admin_context: ADMIN_ROLE ? { role: ADMIN_ROLE, name: ADMIN_NAME, email: ADMIN_EMAIL } : undefined,
         }),
       });
 
@@ -1000,12 +1019,61 @@
     }
   }
 
+  // ─── Mother Brain: Boot from cloud ───
+  async function bootFromCloud() {
+    try {
+      const res = await fetch(`${API_BASE}/api/sites/config/${TENANT_ID}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+      });
+      if (!res.ok) return;
+      cloudConfig = await res.json();
+
+      // Apply feature flags
+      if (cloudConfig.features) {
+        featureFlags = { ...featureFlags, ...cloudConfig.features };
+      }
+
+      // Apply tuning
+      if (cloudConfig.tuning) {
+        tuning = { ...tuning, ...cloudConfig.tuning };
+      }
+
+      // Kill switch: if widget is disabled in cloud, hide everything
+      if (cloudConfig.widget && cloudConfig.widget.enabled === false) {
+        const container = document.getElementById("te-widget-container");
+        if (container) container.style.display = "none";
+        return;
+      }
+
+      // Apply remote widget appearance overrides
+      if (cloudConfig.widget) {
+        const w = cloudConfig.widget;
+        // Update header name if cloud has a different one
+        if (w.name) {
+          const h3 = document.querySelector("#te-chat-header h3");
+          if (h3) h3.textContent = w.name;
+        }
+        // Update color (CSS custom property approach)
+        if (w.color && w.color !== THEME_COLOR) {
+          document.documentElement.style.setProperty("--te-theme-color", w.color);
+        }
+      }
+
+      console.log(`[TinyEclipse] Mother Brain connected — intelligence v${cloudConfig.mother_brain?.intelligence_version || "?"}, plan: ${cloudConfig.plan || "?"}`);
+    } catch (e) {
+      // Graceful degradation — widget works fine without cloud config
+    }
+  }
+
   // ─── Initialize ───
   function init() {
     injectStyles();
     buildWidget();
     startSession();
     setupBehaviorTracking();
+    // Async boot from Mother Brain (non-blocking)
+    bootFromCloud();
   }
 
   if (document.readyState === "loading") {

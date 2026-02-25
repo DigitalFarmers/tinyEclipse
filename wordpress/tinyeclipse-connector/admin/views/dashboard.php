@@ -27,12 +27,25 @@ $modules['seo'] = class_exists('TinyEclipse_SEO');
 $modules['mail'] = class_exists('TinyEclipse_Mail');
 $modules['translation'] = class_exists('TinyEclipse_Translation') && function_exists('icl_get_languages');
 $modules['forms'] = class_exists('TinyEclipse_Forms') && (function_exists('wpFluent') || class_exists('WPCF7'));
-$modules['jobs'] = class_exists('TinyEclipse_Jobs') && post_type_exists('job_listing');
+$modules['jobs'] = class_exists('TinyEclipse_Jobs') || post_type_exists('job_listing');
 $modules['woocommerce'] = defined('TINYECLIPSE_WC_VERSION');
 $modules['analytics'] = defined('TINYECLIPSE_ANALYTICS_VERSION');
 
 $active_modules = array_filter($modules);
 $total_modules = count($active_modules);
+
+// WPML translation sync data
+$wpml_active = function_exists('icl_get_languages') && defined('ICL_SITEPRESS_VERSION');
+$wpml_info = $wpml_active ? tinyeclipse_get_wpml_info() : null;
+$wpml_sync = [];
+if ($wpml_active && $wpml_info) {
+    $default_lang = $wpml_info['default_language'];
+    $wpml_sync['pages'] = tinyeclipse_get_translation_sync_status('page', $default_lang, $wpml_info['languages']);
+    $wpml_sync['posts'] = tinyeclipse_get_translation_sync_status('post', $default_lang, $wpml_info['languages']);
+    if (class_exists('WooCommerce')) {
+        $wpml_sync['products'] = tinyeclipse_get_translation_sync_status('product', $default_lang, $wpml_info['languages']);
+    }
+}
 
 // Calculate site health score
 $health_score = 50; // Base
@@ -250,6 +263,47 @@ $plugin_count = count(get_option('active_plugins', []));
         </div>
     </div>
 
+    <?php if ($wpml_active && !empty($wpml_sync)): ?>
+    <!-- WPML Translation Sync -->
+    <div class="te-section">
+        <h2>🌐 Vertaal-synchronisatie <span style="font-size:11px;font-weight:400;color:#9ca3af;">— Hoofdtaal: <?php echo strtoupper($wpml_info['default_language']); ?></span></h2>
+        <div class="te-grid te-grid-3">
+            <?php
+            $sync_types = ['pages' => ['label' => 'Pagina\'s', 'icon' => '📄'], 'posts' => ['label' => 'Berichten', 'icon' => '📝']];
+            if (isset($wpml_sync['products'])) $sync_types['products'] = ['label' => 'Producten', 'icon' => '🛍️'];
+            
+            foreach ($sync_types as $type_key => $type_info):
+                $sync_data = $wpml_sync[$type_key] ?? [];
+                if (empty($sync_data)) continue;
+            ?>
+            <div class="te-card">
+                <div class="te-stat-label"><?php echo $type_info['icon']; ?> <?php echo $type_info['label']; ?></div>
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                    <?php foreach ($sync_data as $lang_code => $lang_sync): 
+                        $pct = $lang_sync['percentage'];
+                        $bar_color = $pct >= 100 ? '#22c55e' : ($pct >= 75 ? '#eab308' : '#ef4444');
+                        $lang_name = $lang_sync['language'];
+                    ?>
+                    <div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                            <span style="font-weight:600;color:#374151;"><?php echo esc_html(strtoupper($lang_code)); ?> — <?php echo esc_html($lang_name); ?></span>
+                            <span style="color:<?php echo $bar_color; ?>;font-weight:600;"><?php echo $lang_sync['translated']; ?>/<?php echo $lang_sync['total']; ?> (<?php echo $pct; ?>%)</span>
+                        </div>
+                        <div style="height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden;">
+                            <div style="height:100%;width:<?php echo $pct; ?>%;background:<?php echo $bar_color; ?>;border-radius:3px;transition:width .3s;"></div>
+                        </div>
+                        <?php if ($lang_sync['missing'] > 0): ?>
+                        <div style="font-size:10px;color:#ef4444;margin-top:2px;"><?php echo $lang_sync['missing']; ?> ontbrekende vertalingen</div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Active Modules (only show active ones as pills) -->
     <div class="te-section">
         <h2>⚡ Actieve Modules (<?php echo $total_modules; ?>)</h2>
@@ -293,14 +347,15 @@ $plugin_count = count(get_option('active_plugins', []));
     <!-- Quick Actions -->
     <div class="te-section">
         <h2>🚀 Acties</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="teAction('scan')" class="te-btn">🔍 Scan</button>
-            <button onclick="teAction('report')" class="te-btn">📊 Rapport</button>
-            <button onclick="teAction('heartbeat')" class="te-btn">💓 Heartbeat</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button id="te-btn-scan" onclick="teAction('scan', this)" class="te-btn">🔍 Site Scan</button>
+            <button id="te-btn-report" onclick="teAction('report', this)" class="te-btn">📊 Rapport genereren</button>
+            <button id="te-btn-heartbeat" onclick="teAction('heartbeat', this)" class="te-btn">💓 Heartbeat versturen</button>
             <?php if ($connected): ?>
             <a href="<?php echo esc_url(TINYECLIPSE_HUB_URL); ?>" target="_blank" class="te-btn te-btn-primary">🌐 Eclipse Hub</a>
             <?php endif; ?>
         </div>
+        <div id="te-action-result" style="display:none;margin-top:12px;padding:12px 16px;border-radius:8px;font-size:12px;line-height:1.5;"></div>
     </div>
 
     <!-- Footer -->
@@ -313,14 +368,69 @@ $plugin_count = count(get_option('active_plugins', []));
 </div>
 
 <script>
-function teAction(type) {
+function teAction(type, btn) {
+    var originalText = btn.innerHTML;
+    var labels = {scan: '🔍 Scannen...', report: '📊 Genereren...', heartbeat: '💓 Versturen...'};
+    btn.innerHTML = labels[type] || '⏳ Bezig...';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    
+    var resultBox = document.getElementById('te-action-result');
+    resultBox.style.display = 'none';
+    
     jQuery.post(tinyeclipse.ajax_url, {
         action: 'tinyeclipse_run_action',
         nonce: tinyeclipse.nonce,
         action_type: type
     }, function(res) {
-        if (res.success) alert('✅ ' + type + ' uitgevoerd!');
-        else alert('❌ Fout: ' + (res.data || 'Onbekend'));
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        
+        resultBox.style.display = 'block';
+        if (res.success) {
+            resultBox.style.background = '#f0fdf4';
+            resultBox.style.border = '1px solid #bbf7d0';
+            resultBox.style.color = '#166534';
+            var summary = teFormatResult(type, res.data);
+            resultBox.innerHTML = '✅ <strong>' + teActionLabel(type) + ' voltooid</strong><br>' + summary;
+        } else {
+            resultBox.style.background = '#fef2f2';
+            resultBox.style.border = '1px solid #fecaca';
+            resultBox.style.color = '#991b1b';
+            resultBox.innerHTML = '❌ <strong>Fout bij ' + teActionLabel(type) + '</strong>: ' + (res.data || 'Onbekende fout');
+        }
+        
+        setTimeout(function() { resultBox.style.display = 'none'; }, 15000);
+    }).fail(function() {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        resultBox.style.display = 'block';
+        resultBox.style.background = '#fef2f2';
+        resultBox.style.border = '1px solid #fecaca';
+        resultBox.style.color = '#991b1b';
+        resultBox.innerHTML = '❌ Verbindingsfout — controleer of de plugin correct geconfigureerd is.';
     });
+}
+
+function teActionLabel(type) {
+    return {scan: 'Site Scan', report: 'Rapport', heartbeat: 'Heartbeat'}[type] || type;
+}
+
+function teFormatResult(type, data) {
+    if (!data || typeof data !== 'object') return '';
+    if (type === 'scan') {
+        var items = [];
+        for (var key in data) {
+            if (data.hasOwnProperty(key) && typeof data[key] === 'object') {
+                items.push('<span style="font-weight:500;">' + key + '</span>: ' + (data[key].status || JSON.stringify(data[key]).substring(0, 80)));
+            }
+        }
+        return items.length > 0 ? items.join(' · ') : 'Scan data ontvangen.';
+    }
+    if (type === 'heartbeat' && data.sent) return 'Heartbeat succesvol verstuurd naar Eclipse Hub.';
+    if (type === 'report') return 'Dagelijks rapport gegenereerd en verstuurd.';
+    return JSON.stringify(data).substring(0, 200);
 }
 </script>

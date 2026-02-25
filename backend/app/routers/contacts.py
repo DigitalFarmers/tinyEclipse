@@ -2,6 +2,7 @@
 import uuid
 import logging
 from datetime import datetime, timedelta
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func, desc, or_
@@ -24,8 +25,8 @@ router = APIRouter(
 
 @router.get("/")
 async def list_contacts(
-    tenant_id: str | None = Query(None),
-    search: str | None = Query(None),
+    tenant_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -53,7 +54,7 @@ async def list_contacts(
 
 @router.get("/stats")
 async def contact_stats(
-    tenant_id: str | None = Query(None),
+    tenant_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Get contact statistics."""
@@ -139,7 +140,7 @@ async def get_contact(
     return profile
 
 
-def _serialize_contact(c: Contact) -> dict:
+def _serialize_contact(c: Contact) -> Dict:
     return {
         "id": str(c.id),
         "tenant_id": str(c.tenant_id),

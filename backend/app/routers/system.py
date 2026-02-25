@@ -7,6 +7,7 @@ import os
 import platform
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -157,7 +158,7 @@ async def database_stats(db: AsyncSession = Depends(get_db)):
 # ─── Bulk Operations ───
 
 class BulkPlanUpdate(BaseModel):
-    tenant_ids: list[str]
+    tenant_ids: List[str]
     plan: str
 
 
@@ -205,7 +206,7 @@ async def bulk_run_monitoring(db: AsyncSession = Depends(get_db)):
 
 @router.post("/bulk/rescrape/")
 async def bulk_rescrape(
-    tenant_ids: list[str] | None = None,
+    tenant_ids: Optional[List[str]] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Re-scrape knowledge base for specified tenants (or all if none specified)."""
@@ -234,10 +235,10 @@ async def bulk_rescrape(
 
 # ─── Audit Log ───
 
-_audit_log: list[dict] = []
+_audit_log: List[Dict] = []
 
 
-def log_audit(action: str, actor: str, target: str, details: dict | None = None):
+def log_audit(action: str, actor: str, target: str, details: Optional[Dict] = None):
     """Add an entry to the audit log. Called internally."""
     _audit_log.append({
         "timestamp": datetime.now(timezone.utc).isoformat(),

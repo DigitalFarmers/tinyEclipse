@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, ShieldCheck, ShieldAlert, Clock, Globe, Lock, Gauge, Server, Crown } from "lucide-react";
 import { ProTeaser, ProBadge } from "@/components/ProTeaser";
+import { CheckCardSkeleton } from "@/components/StatSkeleton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -54,9 +55,13 @@ export default function PortalMonitoringPage() {
       </div>
 
       {loading ? (
-        <div className="mt-12 flex items-center justify-center gap-3 text-white/40">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-          <span className="text-sm">Laden...</span>
+        <div className="mt-6 space-y-4">
+          <div className="animate-pulse flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-4">
+            <div className="h-5 w-5 rounded bg-white/5" />
+            <div className="space-y-1 flex-1"><div className="h-3 w-40 rounded bg-white/5" /><div className="h-2 w-56 rounded bg-white/[0.03]" /></div>
+          </div>
+          <CheckCardSkeleton count={4} />
+          <CheckCardSkeleton count={4} />
         </div>
       ) : !monitor ? (
         <div className="mt-12 rounded-2xl border border-dashed border-white/10 p-12 text-center">

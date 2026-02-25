@@ -3,10 +3,12 @@
 
 INPUT → RETRIEVAL → RESPONSE → CONFIDENCE → LOG → ESCALATE
 """
+from __future__ import annotations
 import re
 import uuid
 import hashlib
 from datetime import datetime
+from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -153,7 +155,7 @@ def _extract_identity_from_dialog(messages: list) -> dict:
     return identity
 
 
-async def _match_visitor_to_contact(db: AsyncSession, tenant_id: uuid.UUID, fingerprint: dict, dialog_identity: dict) -> Contact | None:
+async def _match_visitor_to_contact(db: AsyncSession, tenant_id: uuid.UUID, fingerprint: dict, dialog_identity: dict) -> Optional[Contact]:
     """Try to match visitor to existing contact using email, phone, or IP history."""
     email = dialog_identity.get("email")
     phone = dialog_identity.get("phone")
@@ -181,6 +183,8 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     channel: str = "widget"
+    page_language: Optional[str] = None
+    admin_context: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):
@@ -239,27 +243,50 @@ async def chat(
     # ─── Visitor Fingerprinting ───
     fingerprint = _extract_visitor_fingerprint(request)
 
+    # ─── IP Intelligence (fire-and-forget) ───
+    try:
+        from app.services.ip_intelligence import record_access
+        await record_access(
+            tenant_id=str(tenant_uuid),
+            ip=fingerprint.get("ip", ""),
+            user_agent=fingerprint.get("user_agent", ""),
+            endpoint="chat",
+            db=db,
+        )
+    except Exception:
+        pass
+
+    # ─── Admin identity detection ───
+    is_admin_user = bool(body.admin_context and body.admin_context.get("role"))
+    identity_blob = {**fingerprint}
+    if is_admin_user:
+        identity_blob["is_admin"] = True
+        identity_blob["admin_role"] = body.admin_context.get("role")
+        identity_blob["admin_name"] = body.admin_context.get("name")
+        identity_blob["admin_email"] = body.admin_context.get("email")
+
     if not conversation:
         conversation = Conversation(
             id=uuid.uuid4(),
             tenant_id=tenant_uuid,
             session_id=body.session_id,
-            channel=body.channel,
+            channel="admin_test" if is_admin_user else body.channel,
             visitor_ip=fingerprint.get("ip"),
             visitor_device=fingerprint.get("device"),
             visitor_browser=fingerprint.get("browser"),
             visitor_language=fingerprint.get("language"),
-            visitor_identity=fingerprint,
+            visitor_name=body.admin_context.get("name") if is_admin_user else None,
+            visitor_email=body.admin_context.get("email") if is_admin_user else None,
+            visitor_identity=identity_blob,
         )
         db.add(conversation)
         await db.flush()
     elif not conversation.visitor_ip and fingerprint.get("ip"):
-        # Update fingerprint if missing on existing conversation
         conversation.visitor_ip = fingerprint.get("ip")
         conversation.visitor_device = fingerprint.get("device")
         conversation.visitor_browser = fingerprint.get("browser")
         conversation.visitor_language = fingerprint.get("language")
-        conversation.visitor_identity = fingerprint
+        conversation.visitor_identity = identity_blob
 
     # ─── Store user message ───
     user_msg = Message(
@@ -333,21 +360,20 @@ async def chat(
             local_now = datetime.utcnow()
 
         lines_gt = []
-        # Time awareness
-        day_nl = {"Monday": "maandag", "Tuesday": "dinsdag", "Wednesday": "woensdag", "Thursday": "donderdag", "Friday": "vrijdag", "Saturday": "zaterdag", "Sunday": "zondag"}
-        lines_gt.append(f"Huidige lokale tijd: {local_now.strftime('%H:%M')} ({day_nl.get(local_now.strftime('%A'), local_now.strftime('%A'))} {local_now.strftime('%d/%m/%Y')})")
+        # Time awareness (English — system context for LLM)
+        lines_gt.append(f"Current local time: {local_now.strftime('%H:%M')} ({local_now.strftime('%A')} {local_now.strftime('%d/%m/%Y')})")
         if local_now.weekday() >= 5:
-            lines_gt.append("Het is weekend.")
+            lines_gt.append("It is the weekend.")
         if local_now.hour >= 22 or local_now.hour < 7:
-            lines_gt.append("Het is nacht — de meeste winkels zijn gesloten.")
+            lines_gt.append("It is nighttime — most businesses are closed.")
         elif local_now.hour >= 18:
-            lines_gt.append("Het is avond.")
+            lines_gt.append("It is evening.")
 
         # Location awareness
         if geo.get("neighborhood_description"):
             lines_gt.append(geo["neighborhood_description"])
         elif geo.get("city"):
-            lines_gt.append(f"Dit bedrijf is gevestigd in {geo['city']}, {geo.get('country', '')}.")
+            lines_gt.append(f"This business is located in {geo['city']}, {geo.get('country', '')}.")
 
         geo_time_context = "\n".join(lines_gt)
     except Exception:
@@ -389,15 +415,15 @@ async def chat(
 
         lines = []
         if recent_orders:
-            lines.append(f"Recente bestellingen ({len(recent_orders)} deze week):")
+            lines.append(f"Recent orders ({len(recent_orders)} this week):")
             for o in recent_orders[:3]:
                 lines.append(f"  - {o.title}")
         if recent_forms:
-            lines.append(f"Recente formulierinzendingen ({len(recent_forms)}):")
+            lines.append(f"Recent form submissions ({len(recent_forms)}):")
             for f in recent_forms[:2]:
                 lines.append(f"  - {f.title}")
         if contact_count > 0:
-            lines.append(f"Totaal bekende klanten/contacten: {contact_count}")
+            lines.append(f"Total known customers/contacts: {contact_count}")
 
         if lines:
             business_context = "\n".join(lines)
@@ -406,10 +432,31 @@ async def chat(
 
     # ─── Combine all context ───
     full_context = context
+    if is_admin_user:
+        admin_name = body.admin_context.get("name", "the admin")
+        admin_role = body.admin_context.get("role", "admin")
+        full_context += f"\n\n--- ADMIN CONTEXT ---\nIMPORTANT: You are NOT talking to a regular visitor/customer. You are talking to {admin_name}, the site {admin_role}. They are the owner/manager of {tenant.name or 'this business'}. Adapt your tone accordingly — be direct, professional, and treat them as a colleague. You can discuss site performance, AI quality, and operational details openly. Do NOT try to sell them their own products.\n--- END ADMIN CONTEXT ---"
     if geo_time_context:
-        full_context += f"\n\n--- LOCATIE & TIJD ---\n{geo_time_context}\n--- EINDE LOCATIE & TIJD ---"
+        full_context += f"\n\n--- LOCATION & TIME ---\n{geo_time_context}\n--- END LOCATION & TIME ---"
     if business_context:
-        full_context += f"\n\n--- LIVE BEDRIJFSDATA ---\n{business_context}\n--- EINDE BEDRIJFSDATA ---"
+        full_context += f"\n\n--- LIVE BUSINESS DATA ---\n{business_context}\n--- END BUSINESS DATA ---"
+
+    # ─── [2e] LANGUAGE: Detect active page language ───
+    # Priority: 1) page_language from widget (WPML/Polylang detected)
+    #           2) conversation's stored language
+    #           3) visitor fingerprint browser language
+    #           4) tenant default
+    detected_lang = (
+        body.page_language
+        or (conversation.visitor_language if conversation and hasattr(conversation, 'visitor_language') else None)
+        or fingerprint.get("language")
+        or "nl"
+    )
+    # Normalize to 2-letter code
+    detected_lang = detected_lang.split("-")[0].lower()[:2] if detected_lang else "nl"
+    # Only allow supported languages
+    if detected_lang not in ("nl", "en", "fr", "de", "es"):
+        detected_lang = "nl"
 
     # ─── [3] RESPONSE: Generate with LLM ───
     llm_result = await generate_response(
@@ -419,7 +466,7 @@ async def chat(
         conversation_history=conversation_history,
         monitoring_context=monitoring_context,
         tenant_name=tenant.name or "het bedrijf",
-        lang=getattr(tenant, "lang", "nl") or "nl",
+        lang=detected_lang,
     )
 
     # ─── [4] CONFIDENCE: Score the response ───
@@ -474,6 +521,40 @@ async def chat(
         tokens_in=llm_result["tokens_in"],
         tokens_out=llm_result["tokens_out"],
     )
+
+    # ─── [5a] EVENT BUS: Log interaction in technical registry ───
+    try:
+        from app.services.event_bus import emit
+        sev = "warning" if escalated else ("info" if confidence >= 0.5 else "warning")
+        await emit(
+            db, domain="ai", action="chat_response",
+            title=f"Chat: conf={confidence:.2f}, esc={'yes' if escalated else 'no'}, lang={detected_lang}",
+            severity=sev, tenant_id=tenant_uuid, source="chat",
+            data={"confidence": confidence, "escalated": escalated, "tokens": llm_result["tokens_in"] + llm_result["tokens_out"], "language": detected_lang},
+        )
+    except Exception:
+        pass
+
+    # ─── [5a2] SELF-REVIEW: AI critically evaluates its own response (fire-and-forget) ───
+    try:
+        import asyncio
+        from app.services.self_review import self_review_interaction
+        asyncio.get_event_loop().create_task(
+            self_review_interaction(
+                tenant_id=tenant_uuid,
+                tenant_name=tenant.name or "Unknown",
+                conversation_id=conversation.id,
+                user_message=body.message,
+                ai_response=final_content,
+                confidence=confidence,
+                escalated=escalated,
+                sources_used=sources_used,
+                language=detected_lang,
+                context_snippet=context[:200] if context else "",
+            )
+        )
+    except Exception:
+        pass
 
     # ─── [5b] IDENTITY: Extract from dialog, match contact, auto-create lead ───
     try:

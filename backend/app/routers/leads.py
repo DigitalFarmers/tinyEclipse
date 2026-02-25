@@ -2,6 +2,7 @@
 import uuid
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
@@ -29,14 +30,14 @@ admin_router = APIRouter(
 
 class LeadCreate(BaseModel):
     tenant_id: str
-    session_id: str | None = None
-    conversation_id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    phone: str | None = None
-    message: str | None = None
+    session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    message: Optional[str] = None
     source: str = "chat"
-    page_url: str | None = None
+    page_url: Optional[str] = None
 
 
 @public_router.post("/")
@@ -105,7 +106,7 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)):
 
 @admin_router.get("/")
 async def list_leads(
-    tenant_id: str | None = Query(None),
+    tenant_id: Optional[str] = Query(None),
     days: int = Query(30, ge=1, le=365),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -142,7 +143,7 @@ async def list_leads(
 
 @admin_router.get("/stats")
 async def lead_stats(
-    tenant_id: str | None = Query(None),
+    tenant_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Get lead statistics."""

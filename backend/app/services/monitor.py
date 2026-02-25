@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitor import (
     MonitorCheck, MonitorResult, Alert,
-    CheckType, CheckStatus, AlertSeverity,
+    CheckType, CheckStatus, AlertSeverity, AlertClassification,
 )
 from app.models.tenant import Tenant
 
@@ -404,6 +404,52 @@ async def run_check(check: MonitorCheck) -> dict:
     return await runner(check.target, check.config)
 
 
+def _classify_alert(check_type: CheckType, severity: AlertSeverity) -> AlertClassification:
+    """Classify an alert: auto_fixable, needs_attention, or informational."""
+    # Auto-fixable: security headers, file permissions, debug mode
+    auto_fixable_types = {CheckType.security_headers}
+    if check_type in auto_fixable_types:
+        return AlertClassification.auto_fixable
+
+    # Critical issues always need attention
+    if severity == AlertSeverity.critical:
+        return AlertClassification.needs_attention
+
+    # Informational: content changes, minor performance warnings
+    informational_types = {CheckType.content_change}
+    if check_type in informational_types:
+        return AlertClassification.informational
+
+    # Default: needs_attention for warnings on important checks
+    if check_type in (CheckType.uptime, CheckType.ssl, CheckType.dns, CheckType.smtp):
+        return AlertClassification.needs_attention
+
+    return AlertClassification.informational
+
+
+def _calculate_priority(check_type: CheckType, severity: AlertSeverity, consecutive_failures: int) -> int:
+    """Calculate priority score 0-100. Higher = more urgent."""
+    base = 0
+
+    # Severity weight (0-40)
+    severity_scores = {AlertSeverity.critical: 40, AlertSeverity.warning: 20, AlertSeverity.info: 5}
+    base += severity_scores.get(severity, 10)
+
+    # Check type weight (0-30)
+    type_scores = {
+        CheckType.uptime: 30, CheckType.ssl: 25, CheckType.dns: 20,
+        CheckType.smtp: 15, CheckType.security_headers: 15,
+        CheckType.performance: 10, CheckType.forms: 10, CheckType.content_change: 5,
+    }
+    base += type_scores.get(check_type, 10)
+
+    # Consecutive failures weight (0-30)
+    failure_bonus = min(consecutive_failures * 3, 30)
+    base += failure_bonus
+
+    return min(base, 100)
+
+
 async def execute_check_and_store(db: AsyncSession, check: MonitorCheck) -> MonitorResult:
     """Execute a check, store the result, update the check status, and create alerts if needed."""
     result_data = await run_check(check)
@@ -433,40 +479,88 @@ async def execute_check_and_store(db: AsyncSession, check: MonitorCheck) -> Moni
     if check.check_type == CheckType.content_change and "current_hash" in result_data.get("details", {}):
         check.config = {**check.config, "last_hash": result_data["details"]["current_hash"]}
 
-    # Create alert if 3+ consecutive failures
+    # Dedup key: unique per check + issue type
+    dedup_key = hashlib.sha256(f"{check.id}:{check.check_type.value}:{check.target}".encode()).hexdigest()[:32]
+    now = datetime.now(timezone.utc)
+
     if check.consecutive_failures >= 3:
         severity = AlertSeverity.critical if result_data["status"] == CheckStatus.critical else AlertSeverity.warning
-        alert = Alert(
-            id=uuid.uuid4(),
-            tenant_id=check.tenant_id,
-            check_id=check.id,
-            severity=severity,
-            title=f"{check.check_type.value.upper()} issue: {check.target}",
-            message=result_data.get("error", f"Check failed {check.consecutive_failures} times in a row. Details: {result_data.get('details', {})}"),
-        )
-        db.add(alert)
-        logger.warning(f"[alert] {severity.value}: {alert.title} for tenant {check.tenant_id}")
+        title = f"{check.check_type.value.upper()} issue: {check.target}"
+        message = result_data.get("error", f"Check failed {check.consecutive_failures} times in a row. Details: {result_data.get('details', {})}")
 
-        # Push notification via webhooks
-        try:
-            from app.routers.webhooks import dispatch_event
-            tenant = await db.get(Tenant, check.tenant_id) if hasattr(db, 'get') else None
-            await dispatch_event(
-                event="alert.created",
-                tenant_id=str(check.tenant_id),
-                payload={
-                    "severity": severity.value,
-                    "title": alert.title,
-                    "message": alert.message[:500],
-                    "check_type": check.check_type.value,
-                    "target": check.target,
-                    "consecutive_failures": check.consecutive_failures,
-                    "tenant_name": tenant.name if tenant else str(check.tenant_id),
-                    "domain": tenant.domain if tenant else check.target,
-                },
+        # Check for existing open alert with same dedup_key
+        existing = (await db.execute(
+            select(Alert).where(and_(
+                Alert.dedup_key == dedup_key,
+                Alert.resolved == False,
+            ))
+        )).scalars().first()
+
+        if existing:
+            # Update existing alert — no duplicate row
+            existing.occurrence_count = (existing.occurrence_count or 1) + 1
+            existing.last_seen_at = now
+            existing.message = message
+            existing.severity = severity
+            logger.info(f"[alert] Dedup: {title} (#{existing.occurrence_count}) for tenant {check.tenant_id}")
+        else:
+            # Classify the alert
+            classification = _classify_alert(check.check_type, severity)
+            priority = _calculate_priority(check.check_type, severity, check.consecutive_failures)
+
+            alert = Alert(
+                id=uuid.uuid4(),
+                tenant_id=check.tenant_id,
+                check_id=check.id,
+                severity=severity,
+                title=title,
+                message=message,
+                dedup_key=dedup_key,
+                occurrence_count=1,
+                last_seen_at=now,
+                classification=classification,
+                priority_score=priority,
             )
-        except Exception as e:
-            logger.debug(f"[alert] Webhook dispatch failed (non-critical): {e}")
+            db.add(alert)
+            logger.warning(f"[alert] NEW {severity.value}: {title} for tenant {check.tenant_id} [class={classification.value}, prio={priority}]")
+
+            # Push notification via webhooks — only for NEW alerts
+            try:
+                from app.routers.webhooks import dispatch_event
+                tenant = await db.get(Tenant, check.tenant_id) if hasattr(db, 'get') else None
+                await dispatch_event(
+                    event="alert.created",
+                    tenant_id=str(check.tenant_id),
+                    payload={
+                        "severity": severity.value,
+                        "title": title,
+                        "message": message[:500],
+                        "check_type": check.check_type.value,
+                        "target": check.target,
+                        "consecutive_failures": check.consecutive_failures,
+                        "tenant_name": tenant.name if tenant else str(check.tenant_id),
+                        "domain": tenant.domain if tenant else check.target,
+                        "classification": classification.value,
+                        "priority_score": priority,
+                    },
+                )
+            except Exception as e:
+                logger.debug(f"[alert] Webhook dispatch failed (non-critical): {e}")
+
+    elif check.consecutive_failures == 0:
+        # Check recovered — auto-resolve any open alerts for this check
+        open_alerts = (await db.execute(
+            select(Alert).where(and_(
+                Alert.dedup_key == dedup_key,
+                Alert.resolved == False,
+            ))
+        )).scalars().all()
+
+        for open_alert in open_alerts:
+            open_alert.resolved = True
+            open_alert.resolved_at = now
+            open_alert.resolved_by = "auto_recovery"
+            logger.info(f"[alert] Auto-resolved: {open_alert.title} (recovered after {open_alert.occurrence_count} occurrences)")
 
     await db.flush()
     return result

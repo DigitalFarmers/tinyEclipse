@@ -16,6 +16,17 @@
 if (!defined('ABSPATH')) exit;
 
 define('TINYECLIPSE_WC_VERSION', '1.0.0');
+define('TINYECLIPSE_WC_DIR', plugin_dir_path(__FILE__));
+
+// Load Sync Agent
+if (file_exists(TINYECLIPSE_WC_DIR . 'includes/class-tinyeclipse-sync-agent.php')) {
+    require_once TINYECLIPSE_WC_DIR . 'includes/class-tinyeclipse-sync-agent.php';
+    add_action('plugins_loaded', function () {
+        if (class_exists('WooCommerce') && class_exists('TinyEclipse_Sync_Agent')) {
+            TinyEclipse_Sync_Agent::instance();
+        }
+    }, 20);
+}
 
 // ─── Dependency Check ───
 add_action('admin_init', function () {
@@ -577,6 +588,93 @@ add_action('rest_api_init', function () {
         'permission_callback' => 'tinyeclipse_verify_request',
     ]);
 
+    // ─── Create product ───
+    register_rest_route('tinyeclipse/v1', '/products/create', [
+        'methods' => 'POST',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['error' => 'WooCommerce not active'], 400);
+            }
+            $data = $request->get_json_params();
+            $product = new WC_Product_Simple();
+            $product->set_name(sanitize_text_field($data['name'] ?? 'New Product'));
+            if (isset($data['price']))         $product->set_regular_price($data['price']);
+            if (isset($data['sale_price']))    $product->set_sale_price($data['sale_price']);
+            if (isset($data['description']))   $product->set_description(wp_kses_post($data['description']));
+            if (isset($data['stock_status']))  $product->set_stock_status($data['stock_status']);
+            if (isset($data['stock_quantity'])) {
+                $product->set_manage_stock(true);
+                $product->set_stock_quantity((int) $data['stock_quantity']);
+            }
+            $product->set_status('publish');
+            $id = $product->save();
+            return new WP_REST_Response(['id' => $id, 'name' => $product->get_name(), 'success' => true], 201);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Delete product ───
+    register_rest_route('tinyeclipse/v1', '/products/(?P<id>\d+)/delete', [
+        'methods' => 'POST',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['error' => 'WooCommerce not active'], 400);
+            }
+            $product = wc_get_product($request['id']);
+            if (!$product) return new WP_REST_Response(['error' => 'Product not found'], 404);
+            $product->delete(true);
+            return new WP_REST_Response(['deleted' => true, 'id' => (int) $request['id']], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Duplicate product ───
+    register_rest_route('tinyeclipse/v1', '/products/(?P<id>\d+)/duplicate', [
+        'methods' => 'POST',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['error' => 'WooCommerce not active'], 400);
+            }
+            $original = wc_get_product($request['id']);
+            if (!$original) return new WP_REST_Response(['error' => 'Product not found'], 404);
+
+            $duplicate = clone $original;
+            $duplicate->set_id(0);
+            $duplicate->set_name($original->get_name() . ' (kopie)');
+            $duplicate->set_slug('');
+            $duplicate->set_date_created(null);
+            $duplicate->set_total_sales(0);
+            $duplicate->set_status('draft');
+            $new_id = $duplicate->save();
+
+            return new WP_REST_Response([
+                'id'      => $new_id,
+                'name'    => $duplicate->get_name(),
+                'success' => true,
+            ], 201);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
+    // ─── Add order note ───
+    register_rest_route('tinyeclipse/v1', '/orders/(?P<id>\d+)/note', [
+        'methods' => 'POST',
+        'callback' => function ($request) {
+            if (!class_exists('WooCommerce')) {
+                return new WP_REST_Response(['error' => 'WooCommerce not active'], 400);
+            }
+            $order = wc_get_order($request['id']);
+            if (!$order) return new WP_REST_Response(['error' => 'Order not found'], 404);
+            $data = $request->get_json_params();
+            $note = sanitize_text_field($data['note'] ?? '');
+            if ($note) {
+                $order->add_order_note($note, 0, false);
+            }
+            return new WP_REST_Response(['success' => true], 200);
+        },
+        'permission_callback' => 'tinyeclipse_verify_request',
+    ]);
+
     // ─── Abandoned carts overview ───
     register_rest_route('tinyeclipse/v1', '/shop/abandoned-carts', [
         'methods' => 'GET',
@@ -696,16 +794,34 @@ add_filter('tinyeclipse_helicopter_stats', function ($stats) {
     return $stats;
 });
 
-// Admin menu items
+// Admin menu items — 3 separate pages: Producten, Bestellingen, Shop Stats
 add_filter('tinyeclipse_admin_menu_items', function ($items) {
     $items[] = [
-        'title' => 'WooCommerce',
-        'slug'  => 'tinyeclipse-wc',
+        'title' => 'Producten',
+        'slug'  => 'tinyeclipse-products',
+        'icon'  => '📦',
+        'cap'   => 'manage_woocommerce',
+        'callback' => function () {
+            include TINYECLIPSE_WC_DIR . 'admin/views/products.php';
+        },
+    ];
+    $items[] = [
+        'title' => 'Bestellingen',
+        'slug'  => 'tinyeclipse-orders',
         'icon'  => '🛒',
         'cap'   => 'manage_woocommerce',
         'callback' => function () {
+            include TINYECLIPSE_WC_DIR . 'admin/views/orders.php';
+        },
+    ];
+    $items[] = [
+        'title' => 'Shop Stats',
+        'slug'  => 'tinyeclipse-shop-stats',
+        'icon'  => '�',
+        'cap'   => 'manage_woocommerce',
+        'callback' => function () {
             if (!class_exists('WooCommerce')) {
-                echo '<div class="wrap"><h1>🛒 WooCommerce</h1><p>WooCommerce is niet actief.</p></div>';
+                echo '<div class="wrap"><h1>� Shop Stats</h1><p>WooCommerce is niet actief.</p></div>';
                 return;
             }
             global $wpdb;
@@ -717,7 +833,7 @@ add_filter('tinyeclipse_admin_menu_items', function ($items) {
             $abandoned = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE '_transient_tinyeclipse_cart_%' AND option_name NOT LIKE '_transient_timeout_%'");
             ?>
             <div class="wrap" style="max-width:900px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-                <h1 style="font-size:22px;margin-bottom:20px;">🛒 WooCommerce Intelligence</h1>
+                <h1 style="font-size:22px;margin-bottom:20px;">� Shop Intelligence</h1>
                 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
                     <div style="background:linear-gradient(135deg,#6366f1,#9333ea);border-radius:12px;padding:16px;color:white;text-align:center;">
                         <div style="font-size:11px;opacity:0.8;text-transform:uppercase;">Omzet (<?php echo $days; ?>d)</div>

@@ -8,6 +8,7 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -28,8 +29,8 @@ router = APIRouter(
 
 
 # ─── In-memory webhook store (DB migration later) ───
-_webhooks: dict[str, dict] = {}
-_webhook_logs: list[dict] = []
+_webhooks: Dict[str, dict] = {}
+_webhook_logs: List[dict] = []
 
 
 class WebhookType(str, PyEnum):
@@ -55,21 +56,21 @@ class WebhookEvent(str, PyEnum):
 
 
 class WebhookCreate(BaseModel):
-    tenant_id: str | None = None  # None = global (all tenants)
+    tenant_id: Optional[str] = None  # None = global (all tenants)
     name: str
     type: str  # slack, discord, email, custom
     url: str  # webhook URL or email address
-    events: list[str] = ["all"]
-    secret: str | None = None  # for HMAC signing
+    events: List[str] = ["all"]
+    secret: Optional[str] = None  # for HMAC signing
     enabled: bool = True
 
 
 class WebhookUpdate(BaseModel):
-    name: str | None = None
-    url: str | None = None
-    events: list[str] | None = None
-    secret: str | None = None
-    enabled: bool | None = None
+    name: Optional[str] = None
+    url: Optional[str] = None
+    events: Optional[List[str]] = None
+    secret: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 # ─── CRUD ───
@@ -177,7 +178,7 @@ async def webhook_logs(limit: int = 50):
 
 # ─── Dispatch Engine ───
 
-async def dispatch_event(event: str, tenant_id: str | None, payload: dict):
+async def dispatch_event(event: str, tenant_id: Optional[str], payload: Dict):
     """Dispatch an event to all matching webhooks. Called internally by other services."""
     for wh in _webhooks.values():
         if not wh["enabled"]:

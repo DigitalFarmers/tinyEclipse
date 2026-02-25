@@ -1,5 +1,6 @@
 """Consent management — hard block without consent."""
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -22,7 +23,7 @@ class ConsentRequest(BaseModel):
 
 class ConsentCheckResponse(BaseModel):
     has_consent: bool
-    terms_version: str | None = None
+    terms_version: Optional[str] = None
 
 
 @router.post("/")

@@ -1,6 +1,7 @@
 """Admin overview and utility endpoints."""
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, func
@@ -88,8 +89,8 @@ async def overview(db: AsyncSession = Depends(get_db)):
 
 @router.get("/conversations/")
 async def list_conversations(
-    tenant_id: str | None = None,
-    status: str | None = None,
+    tenant_id: Optional[str] = None,
+    status: Optional[str] = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
@@ -244,7 +245,7 @@ async def get_embed_config(
 
 @router.get("/usage/")
 async def usage_overview(
-    tenant_id: str | None = None,
+    tenant_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Usage statistics overview."""

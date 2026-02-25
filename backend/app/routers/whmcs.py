@@ -2,9 +2,11 @@
 WHMCS API Router — Client portal, billing sync, auto-provisioning.
 The bridge between WHMCS billing and Eclipse AI.
 """
+from __future__ import annotations
 import uuid
 import logging
 from datetime import datetime, timezone
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -320,11 +322,11 @@ async def push_tenant_ids_to_whmcs(db: AsyncSession = Depends(get_db)):
 
 class WHMCSWebhookPayload(BaseModel):
     action: str  # OrderPaid, ServiceActivate, ServiceSuspend, ServiceTerminate, etc.
-    client_id: int | None = None
-    service_id: int | None = None
-    product_id: int | None = None
-    domain: str | None = None
-    custom_fields: dict = {}
+    client_id: Optional[int] = None
+    service_id: Optional[int] = None
+    product_id: Optional[int] = None
+    domain: Optional[str] = None
+    custom_fields: Dict = {}
 
 
 @router.post("/webhook/")
@@ -499,4 +501,196 @@ async def client_portal_data(client_id: int, db: AsyncSession = Depends(get_db))
             f'data-api="https://api.tinyeclipse.digitalfarmers.be" '
             f'async></script>'
         ),
+    }
+
+
+# ─── Billing Status ───
+
+@router.get("/billing/{client_id}")
+async def client_billing_status(client_id: int):
+    """Get billing overview for a WHMCS client: products, invoices, payment status."""
+    whmcs = get_whmcs_client()
+    if not whmcs.configured:
+        raise HTTPException(status_code=503, detail="WHMCS not configured")
+
+    try:
+        # Products/services
+        products_data = await whmcs.get_client_products(client_id)
+        products = products_data.get("products", {}).get("product", [])
+
+        services = []
+        for p in products:
+            plan = whmcs.product_id_to_plan(p.get("pid")) or "unknown"
+            services.append({
+                "id": p.get("id"),
+                "name": p.get("name", ""),
+                "domain": p.get("domain", ""),
+                "status": p.get("status", ""),
+                "plan": plan,
+                "billing_cycle": p.get("billingcycle", ""),
+                "next_due": p.get("nextduedate", ""),
+                "amount": p.get("recurringamount", ""),
+                "reg_date": p.get("regdate", ""),
+            })
+
+        # Invoices
+        unpaid_data = await whmcs.get_invoices(client_id=client_id, status="Unpaid")
+        unpaid_invoices = unpaid_data.get("invoices", {}).get("invoice", [])
+
+        paid_data = await whmcs.get_invoices(client_id=client_id, status="Paid")
+        paid_invoices = paid_data.get("invoices", {}).get("invoice", [])
+
+        invoices = []
+        for inv in (unpaid_invoices + paid_invoices[:5]):
+            invoices.append({
+                "id": inv.get("id"),
+                "date": inv.get("date", ""),
+                "duedate": inv.get("duedate", ""),
+                "total": inv.get("total", ""),
+                "status": inv.get("status", ""),
+            })
+
+        # Summary
+        total_mrr = sum(float(s.get("amount", 0) or 0) for s in services if s["status"] == "Active" and s["billing_cycle"] == "Monthly")
+        overdue = [i for i in unpaid_invoices if i.get("status") == "Overdue"]
+
+        return {
+            "client_id": client_id,
+            "services": services,
+            "invoices": invoices,
+            "summary": {
+                "active_services": sum(1 for s in services if s["status"] == "Active"),
+                "total_services": len(services),
+                "unpaid_invoices": len(unpaid_invoices),
+                "overdue_invoices": len(overdue),
+                "monthly_revenue": round(total_mrr, 2),
+                "billing_healthy": len(overdue) == 0,
+            },
+        }
+    except WHMCSError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class PlanChangePayload(BaseModel):
+    tenant_id: str
+    old_plan: str
+    new_plan: str
+
+
+@router.post("/plan-change")
+async def plan_change(payload: PlanChangePayload, db: AsyncSession = Depends(get_db)):
+    """Handle plan upgrade/downgrade from WHMCS addon."""
+    tenant_result = await db.execute(
+        select(Tenant).where(Tenant.id == uuid.UUID(payload.tenant_id))
+    )
+    tenant = tenant_result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    plan_map = {"tiny": PlanType.tiny, "pro": PlanType.pro, "pro_plus": PlanType.pro_plus}
+    new_plan_enum = plan_map.get(payload.new_plan)
+    if not new_plan_enum:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {payload.new_plan}")
+
+    old_plan = tenant.plan.value
+    tenant.plan = new_plan_enum
+    await db.flush()
+
+    logger.info(f"[whmcs] Plan changed for {tenant.id}: {old_plan} → {payload.new_plan}")
+
+    return {
+        "status": "updated",
+        "tenant_id": str(tenant.id),
+        "old_plan": old_plan,
+        "new_plan": payload.new_plan,
+    }
+
+
+class StatusChangePayload(BaseModel):
+    tenant_id: str
+    status: str  # active, suspended, terminated
+
+
+@router.post("/status-change")
+async def status_change(payload: StatusChangePayload, db: AsyncSession = Depends(get_db)):
+    """Handle status change from WHMCS addon (suspend/unsuspend/terminate)."""
+    tenant_result = await db.execute(
+        select(Tenant).where(Tenant.id == uuid.UUID(payload.tenant_id))
+    )
+    tenant = tenant_result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    status_map = {
+        "active": TenantStatus.active,
+        "suspended": TenantStatus.suspended,
+        "terminated": TenantStatus.suspended,  # We don't delete, just suspend
+    }
+    new_status = status_map.get(payload.status)
+    if not new_status:
+        raise HTTPException(status_code=400, detail=f"Unknown status: {payload.status}")
+
+    tenant.status = new_status
+    await db.flush()
+
+    logger.info(f"[whmcs] Status changed for {tenant.id}: → {payload.status}")
+
+    return {"status": "updated", "tenant_id": str(tenant.id), "new_status": payload.status}
+
+
+@router.post("/provision")
+async def auto_provision(request: Request, db: AsyncSession = Depends(get_db)):
+    """Auto-provision: create Eclipse tenant from WHMCS service.
+    Body: { "client_id": int, "service_id": int, "domain": str, "plan": str }
+    """
+    data = await request.json()
+    client_id = data.get("client_id")
+    domain = data.get("domain", "").strip()
+    plan = data.get("plan", "tiny")
+
+    if not client_id or not domain:
+        raise HTTPException(status_code=400, detail="client_id and domain required")
+
+    # Check if tenant already exists
+    existing = await db.execute(
+        select(Tenant).where(Tenant.domain == domain)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Tenant for {domain} already exists")
+
+    # Map plan
+    plan_map = {"tiny": PlanType.tiny, "pro": PlanType.pro, "pro_plus": PlanType.pro_plus}
+    plan_enum = plan_map.get(plan, PlanType.tiny)
+
+    # Get client name from WHMCS
+    whmcs = get_whmcs_client()
+    client_name = domain
+    try:
+        client_data = await whmcs.get_client(client_id)
+        client_info = client_data.get("client", client_data)
+        client_name = client_info.get("companyname") or f"{client_info.get('firstname', '')} {client_info.get('lastname', '')}".strip() or domain
+    except WHMCSError:
+        pass
+
+    # Create tenant
+    tenant = Tenant(
+        id=uuid.uuid4(),
+        name=client_name,
+        domain=domain,
+        plan=plan_enum,
+        status=TenantStatus.active,
+        whmcs_client_id=client_id,
+        settings={"provisioned_at": datetime.now(timezone.utc).isoformat(), "auto_provisioned": True},
+    )
+    db.add(tenant)
+    await db.commit()
+
+    logger.info(f"[whmcs] Auto-provisioned tenant {tenant.id} for {domain} (client #{client_id}, plan {plan})")
+
+    return {
+        "status": "provisioned",
+        "tenant_id": str(tenant.id),
+        "domain": domain,
+        "plan": plan,
+        "client_id": client_id,
     }

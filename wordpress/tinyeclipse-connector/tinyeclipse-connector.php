@@ -484,22 +484,41 @@ function tinyeclipse_get_clickable_stats() {
     global $wpdb;
     
     $stats = [];
+    $wpml_active = function_exists('icl_get_languages') && defined('ICL_SITEPRESS_VERSION');
+    $wpml_info = $wpml_active ? tinyeclipse_get_wpml_info() : null;
+    $default_lang = $wpml_info['default_language'] ?? null;
     
-    // Basic WordPress stats
+    // Basic WordPress stats — WPML-aware
+    $page_count = wp_count_posts('page')->publish;
+    $page_label = 'Pagina\'s';
+    if ($wpml_active && $default_lang) {
+        $main_count = tinyeclipse_count_main_language_posts('page', $default_lang);
+        $page_label = $main_count . ' uniek ×' . count($wpml_info['languages']);
+        $page_count = $main_count;
+    }
     $stats['pages'] = [
-        'count' => wp_count_posts('page')->publish,
-        'label' => 'Pagina\'s',
+        'count' => $page_count,
+        'label' => $page_label,
         'icon' => '📄',
         'url' => admin_url('edit.php?post_type=page'),
-        'drilldown' => tinyeclipse_get_recent_pages(5)
+        'drilldown' => tinyeclipse_get_recent_pages(5),
+        'wpml' => $wpml_info
     ];
     
+    $post_count = wp_count_posts('post')->publish;
+    $post_label = 'Berichten';
+    if ($wpml_active && $default_lang) {
+        $main_count = tinyeclipse_count_main_language_posts('post', $default_lang);
+        $post_label = $main_count . ' uniek ×' . count($wpml_info['languages']);
+        $post_count = $main_count;
+    }
     $stats['posts'] = [
-        'count' => wp_count_posts('post')->publish,
-        'label' => 'Berichten',
+        'count' => $post_count,
+        'label' => $post_label,
         'icon' => '📝',
         'url' => admin_url('edit.php'),
-        'drilldown' => tinyeclipse_get_recent_posts(5)
+        'drilldown' => tinyeclipse_get_recent_posts(5),
+        'wpml' => $wpml_info
     ];
     
     $stats['users'] = [
@@ -518,14 +537,22 @@ function tinyeclipse_get_clickable_stats() {
         'drilldown' => tinyeclipse_get_recent_comments(5)
     ];
     
-    // WooCommerce stats
+    // WooCommerce stats — WPML-aware
     if (class_exists('WooCommerce')) {
+        $product_count = wp_count_posts('product')->publish;
+        $product_label = 'Producten';
+        if ($wpml_active && $default_lang) {
+            $main_count = tinyeclipse_count_main_language_posts('product', $default_lang);
+            $product_label = $main_count . ' uniek ×' . count($wpml_info['languages']);
+            $product_count = $main_count;
+        }
         $stats['products'] = [
-            'count' => wp_count_posts('product')->publish,
-            'label' => 'Producten',
+            'count' => $product_count,
+            'label' => $product_label,
             'icon' => '🛍️',
             'url' => admin_url('edit.php?post_type=product'),
-            'drilldown' => tinyeclipse_get_recent_products(5)
+            'drilldown' => tinyeclipse_get_recent_products(5),
+            'wpml' => $wpml_info
         ];
         
         $stats['orders'] = [
@@ -572,6 +599,110 @@ function tinyeclipse_get_clickable_stats() {
     ];
     
     return $stats;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WPML-AWARE HELPERS — Count only main language, detect sync status
+// ═══════════════════════════════════════════════════════════════
+
+function tinyeclipse_get_wpml_info() {
+    if (!function_exists('icl_get_languages') || !defined('ICL_SITEPRESS_VERSION')) {
+        return null;
+    }
+    
+    global $sitepress;
+    $default_lang = $sitepress ? $sitepress->get_default_language() : 'en';
+    $active_languages = icl_get_languages('skip_missing=0');
+    
+    $languages = [];
+    foreach ($active_languages as $code => $lang) {
+        $languages[$code] = [
+            'code' => $code,
+            'name' => $lang['native_name'] ?? $lang['translated_name'] ?? $code,
+            'flag' => $lang['country_flag_url'] ?? '',
+            'is_default' => ($code === $default_lang),
+        ];
+    }
+    
+    return [
+        'active' => true,
+        'version' => ICL_SITEPRESS_VERSION,
+        'default_language' => $default_lang,
+        'languages' => $languages,
+        'language_count' => count($languages),
+    ];
+}
+
+function tinyeclipse_count_main_language_posts($post_type, $default_lang) {
+    global $wpdb;
+    
+    $translations_table = $wpdb->prefix . 'icl_translations';
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$translations_table}'") === $translations_table;
+    
+    if (!$table_exists) {
+        return wp_count_posts($post_type)->publish;
+    }
+    
+    $element_type = 'post_' . $post_type;
+    $count = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(DISTINCT t.trid) FROM {$translations_table} t
+         INNER JOIN {$wpdb->posts} p ON p.ID = t.element_id
+         WHERE t.element_type = %s AND t.language_code = %s AND p.post_status = 'publish'",
+        $element_type, $default_lang
+    ));
+    
+    return (int) $count;
+}
+
+function tinyeclipse_get_translation_sync_status($post_type, $default_lang, $languages) {
+    global $wpdb;
+    
+    $translations_table = $wpdb->prefix . 'icl_translations';
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$translations_table}'") === $translations_table;
+    
+    if (!$table_exists) {
+        return [];
+    }
+    
+    $element_type = 'post_' . $post_type;
+    
+    // Get all trids for the default language
+    $trids = $wpdb->get_col($wpdb->prepare(
+        "SELECT DISTINCT t.trid FROM {$translations_table} t
+         INNER JOIN {$wpdb->posts} p ON p.ID = t.element_id
+         WHERE t.element_type = %s AND t.language_code = %s AND p.post_status = 'publish'",
+        $element_type, $default_lang
+    ));
+    
+    $total = count($trids);
+    if ($total === 0) return [];
+    
+    $sync = [];
+    foreach ($languages as $code => $lang) {
+        if ($code === $default_lang) continue;
+        
+        // Count how many of these trids have a translation in this language
+        $translated = 0;
+        if (!empty($trids)) {
+            $placeholders = implode(',', array_fill(0, count($trids), '%d'));
+            $translated = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$translations_table} t
+                 INNER JOIN {$wpdb->posts} p ON p.ID = t.element_id
+                 WHERE t.element_type = %s AND t.language_code = %s AND t.trid IN ({$placeholders}) AND p.post_status = 'publish'",
+                array_merge([$element_type, $code], $trids)
+            ));
+        }
+        
+        $sync[$code] = [
+            'language' => $lang['name'],
+            'total' => $total,
+            'translated' => $translated,
+            'missing' => $total - $translated,
+            'percentage' => $total > 0 ? round(($translated / $total) * 100) : 0,
+        ];
+    }
+    
+    return $sync;
 }
 
 // Drill-down helper functions
@@ -776,11 +907,85 @@ require_once $te_includes . 'class-tinyeclipse-translator.php';
 require_once $te_includes . 'class-tinyeclipse-jobs.php';
 require_once $te_includes . 'class-tinyeclipse-forms.php';
 require_once $te_includes . 'class-tinyeclipse-tokens.php';
+require_once $te_includes . 'class-tinyeclipse-faq.php';
+require_once $te_includes . 'class-tinyeclipse-business.php';
+require_once $te_includes . 'class-tinyeclipse-opengraph.php';
+require_once $te_includes . 'class-tinyeclipse-site-intelligence.php';
+require_once $te_includes . 'class-tinyeclipse-command-queue.php';
+require_once $te_includes . 'class-tinyeclipse-update-guard.php';
 require_once $te_includes . 'class-tinyeclipse-rest-api.php';
 
 if (is_admin()) {
     require_once $te_includes . 'class-tinyeclipse-admin.php';
 }
+
+// ═══════════════════════════════════════════════════════════════
+// FRONTEND WIDGET INJECTION (must run outside is_admin check)
+// ═══════════════════════════════════════════════════════════════
+add_action('wp_footer', function () {
+    if (is_admin()) return;
+    if (!get_option('tinyeclipse_enabled', false)) return;
+
+    $tenant_id = tinyeclipse_get_tenant_id();
+    if (empty($tenant_id)) return;
+
+    // Check excluded roles (default: empty — admins see the widget but are recognized)
+    $admin_attrs = '';
+    if (is_user_logged_in()) {
+        $user = wp_get_current_user();
+        $exclude_roles = get_option('tinyeclipse_exclude_roles', []);
+        if (!empty($exclude_roles) && array_intersect($user->roles, (array) $exclude_roles)) return;
+
+        // Inject admin identity so AI knows who it's talking to
+        if ($user->has_cap('manage_options') || $user->has_cap('edit_posts')) {
+            $role = $user->has_cap('manage_options') ? 'admin' : 'editor';
+            $admin_attrs = ' data-admin-role="' . esc_attr($role) . '"'
+                . ' data-admin-name="' . esc_attr($user->display_name) . '"'
+                . ' data-admin-email="' . esc_attr($user->user_email) . '"';
+        }
+    }
+
+    // Check excluded pages
+    $exclude_pages = get_option('tinyeclipse_exclude_pages', '');
+    if (!empty($exclude_pages)) {
+        $current_path = wp_parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $excluded = array_filter(array_map('trim', explode("\n", $exclude_pages)));
+        foreach ($excluded as $path) {
+            if ($path && strpos($current_path, $path) === 0) return;
+        }
+    }
+
+    $color    = esc_attr(get_option('tinyeclipse_color', '#6C3CE1'));
+    $name     = esc_attr(get_option('tinyeclipse_name', get_bloginfo('name') . ' AI'));
+    $position = esc_attr(get_option('tinyeclipse_position', 'bottom-right'));
+
+    // WPML/Polylang-aware language detection (per page, not static)
+    $lang = get_option('tinyeclipse_lang', 'nl');
+    if (defined('ICL_LANGUAGE_CODE')) {
+        // WPML active — use current page language
+        $lang = ICL_LANGUAGE_CODE;
+    } elseif (function_exists('pll_current_language')) {
+        // Polylang active
+        $lang = pll_current_language('slug') ?: $lang;
+    } else {
+        // Fallback: WP locale (e.g., "en_US" → "en")
+        $wp_lang = substr(get_locale(), 0, 2);
+        if (in_array($wp_lang, ['nl', 'en', 'fr', 'de', 'es', 'it', 'pt'])) {
+            $lang = $wp_lang;
+        }
+    }
+    $lang = esc_attr($lang);
+
+    echo '<script src="' . esc_url(TINYECLIPSE_API_BASE . '/widget/v1/widget.js') . '"'
+        . ' data-tenant="' . esc_attr($tenant_id) . '"'
+        . ' data-api="' . esc_url(TINYECLIPSE_API_BASE) . '"'
+        . ' data-color="' . $color . '"'
+        . ' data-name="' . $name . '"'
+        . ' data-lang="' . $lang . '"'
+        . ' data-position="' . $position . '"'
+        . $admin_attrs
+        . ' async></script>' . "\n";
+}, 999);
 
 // ═══════════════════════════════════════════════════════════════
 // INIT ALL MODULES
@@ -797,6 +1002,11 @@ add_action('init', function () {
     TinyEclipse_Jobs::instance();
     TinyEclipse_Forms::instance();
     TinyEclipse_Tokens::instance();
+    TinyEclipse_FAQ::instance();
+    TinyEclipse_Business::instance();
+    TinyEclipse_OpenGraph::instance();
+    TinyEclipse_Site_Intelligence::instance();
+    TinyEclipse_Update_Guard::instance();
 
     if (is_admin()) {
         TinyEclipse_Admin::instance();
@@ -808,6 +1018,11 @@ add_action('init', function () {
 // REST routes
 add_action('rest_api_init', function () {
     TinyEclipse_REST_API::register_routes();
+});
+
+// Handle redirects from Link Manager
+add_action('template_redirect', function () {
+    TinyEclipse_OpenGraph::instance()->handle_redirects();
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1141,6 +1356,9 @@ function tinyeclipse_auto_onboard() {
             // Start heartbeat immediately
             wp_schedule_single_event(time(), 'tinyeclipse_heartbeat_now');
             
+            // Schedule first-connect deep scan (runs async after activation)
+            wp_schedule_single_event(time() + 10, 'tinyeclipse_first_connect_scan');
+            
         } else {
             // Onboarding failed, but we have tenant ID
             tinyeclipse_log('onboarding', 'warning', 'Auto-onboarding failed, using local mode', [
@@ -1175,4 +1393,48 @@ add_action('tinyeclipse_hourly_scan', function() {
 // Add manual sync action
 add_action('tinyeclipse_manual_knowledge_sync', function() {
     return TinyEclipse_Collector::instance()->sync_knowledge_to_hub(true);
+});
+
+// First-connect deep scan — runs 10 seconds after successful onboarding
+add_action('tinyeclipse_first_connect_scan', function() {
+    tinyeclipse_log('site_intelligence', 'info', 'First-connect deep scan starting');
+    
+    $si = TinyEclipse_Site_Intelligence::instance();
+    $scan = $si->run_deep_scan();
+    
+    // Send to Hub
+    $tenant_id = tinyeclipse_get_tenant_id();
+    if (!empty($tenant_id)) {
+        $response = wp_remote_post(TINYECLIPSE_API_BASE . '/api/admin/wp/' . $tenant_id . '/deep-scan', [
+            'timeout' => 30,
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-Tenant-Id'  => $tenant_id,
+            ],
+            'body' => wp_json_encode($scan),
+        ]);
+        
+        $status = is_wp_error($response) ? 'error' : wp_remote_retrieve_response_code($response);
+        tinyeclipse_log('site_intelligence', 'info', 'First-connect deep scan completed', [
+            'rating'       => $scan['rating']['overall_rating'] ?? 'unknown',
+            'score'        => $scan['rating']['overall_score'] ?? 0,
+            'content_units'=> $scan['content']['total_content_units'] ?? 0,
+            'languages'    => $scan['languages']['language_count'] ?? 1,
+            'hub_status'   => $status,
+        ]);
+    }
+    
+    // Also trigger ecosystem detection
+    tinyeclipse_log('ecosystem', 'info', 'Starting ecosystem detection after deep scan');
+    $hub = TinyEclipse_Hub::instance();
+    $ecosystem = $hub->detect_ecosystem();
+    
+    tinyeclipse_log('ecosystem', 'info', 'Ecosystem detection completed', [
+        'confidence_score' => $ecosystem['confidence_score'] ?? 0,
+        'plugin_count' => count($ecosystem['plugins'] ?? []),
+        'detected_types' => array_unique(array_column($ecosystem['plugins'] ?? [], 'type'))
+    ]);
+    
+    // Also trigger a full knowledge sync right after
+    TinyEclipse_Collector::instance()->sync_knowledge_to_hub(true);
 });

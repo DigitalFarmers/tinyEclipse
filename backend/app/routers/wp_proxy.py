@@ -7,6 +7,7 @@ tenant auth centralized.
 """
 import uuid
 import logging
+from typing import Optional, Dict, List, Union
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -38,7 +39,7 @@ async def _get_tenant(tenant_id: str, db: AsyncSession) -> Tenant:
     return tenant
 
 
-async def _wp_get(tenant: Tenant, path: str, params: dict | None = None) -> dict:
+async def _wp_get(tenant: Tenant, path: str, params: Optional[Dict] = None) -> Dict:
     """Try eclipse-ai/v1 first, then tinyeclipse/v1 fallback."""
     headers = {"X-Tenant-Id": str(tenant.id)}
     namespaces = ["eclipse-ai/v1", "tinyeclipse/v1"]
@@ -57,7 +58,7 @@ async def _wp_get(tenant: Tenant, path: str, params: dict | None = None) -> dict
     return {"error": True, "detail": "No working endpoint found"}
 
 
-async def _wp_rest_get(tenant: Tenant, path: str, params: dict | None = None) -> dict | list:
+async def _wp_rest_get(tenant: Tenant, path: str, params: Optional[Dict] = None) -> Union[Dict, List]:
     """Direct WP REST API call (wp/v2, wc/v3, etc)."""
     url = f"https://{tenant.domain}/wp-json/{path}"
     try:
@@ -158,7 +159,7 @@ async def get_mail_status(tenant_id: str, db: AsyncSession = Depends(get_db)):
 
 # ─── POST helper ───
 
-async def _wp_post(tenant: Tenant, path: str, data: dict | None = None) -> dict:
+async def _wp_post(tenant: Tenant, path: str, data: Optional[Dict] = None) -> Dict:
     """POST to eclipse-ai/v1 first, then tinyeclipse/v1 fallback."""
     headers = {"X-Tenant-Id": str(tenant.id), "Content-Type": "application/json"}
     for ns in ["eclipse-ai/v1", "tinyeclipse/v1"]:
@@ -197,6 +198,56 @@ async def trigger_full_sync(tenant_id: str, db: AsyncSession = Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════════════════════
+# DEEP SCAN — Receive site intelligence from first-connect scan
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/{tenant_id}/deep-scan")
+async def receive_deep_scan(tenant_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Receive deep scan results from the connector and store in tenant settings."""
+    tenant = await _get_tenant(tenant_id, db)
+    scan_data = await request.json()
+
+    # Store in tenant settings
+    settings = dict(tenant.settings) if tenant.settings else {}
+    settings["deep_scan"] = scan_data
+    settings["deep_scan_at"] = scan_data.get("scanned_at")
+
+    # Extract key metrics for quick access
+    if "content" in scan_data:
+        c = scan_data["content"]
+        settings["content_units"] = {
+            "unique_total": c.get("total_content_units", 0),
+            "wp_total": c.get("total_wp_posts", 0),
+            "wpml_grouped": c.get("wpml_grouped", False),
+            "language_count": c.get("language_count", 1),
+        }
+    if "rating" in scan_data:
+        settings["site_rating"] = scan_data["rating"]
+    if "languages" in scan_data:
+        settings["languages"] = {
+            "wpml_active": scan_data["languages"].get("wpml_active", False),
+            "default_language": scan_data["languages"].get("default_language"),
+            "language_count": scan_data["languages"].get("language_count", 1),
+        }
+
+    tenant.settings = settings
+    await db.commit()
+
+    logger.info(
+        f"[deep-scan] Stored scan for {tenant.name} ({tenant.domain}): "
+        f"rating={scan_data.get('rating', {}).get('overall_rating', '?')}, "
+        f"content_units={scan_data.get('content', {}).get('total_content_units', '?')}"
+    )
+
+    return {
+        "status": "stored",
+        "tenant": tenant.name,
+        "rating": scan_data.get("rating", {}).get("overall_rating"),
+        "content_units": scan_data.get("content", {}).get("total_content_units"),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # WRITE — Proxy write operations to WordPress
 # ═══════════════════════════════════════════════════════════════
 
@@ -230,6 +281,13 @@ async def update_options(tenant_id: str, request: Request, db: AsyncSession = De
     tenant = await _get_tenant(tenant_id, db)
     data = await request.json()
     return await _wp_post(tenant, "/options", data)
+
+
+@router.post("/{tenant_id}/fix/security-headers")
+async def fix_security_headers(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """Tell the WP plugin to add security headers to .htaccess."""
+    tenant = await _get_tenant(tenant_id, db)
+    return await _wp_post(tenant, "/security/fix", {"fix_type": "add_security_headers", "auto_confirm": True})
 
 
 # ─── Content (read all pages/posts) ───
@@ -291,3 +349,60 @@ async def get_site_info(tenant_id: str, db: AsyncSession = Depends(get_db)):
         info["has_media"] = True
 
     return info
+
+
+# ═══════════════════════════════════════════════════════════════
+# UPDATE GUARD — Receive update/rollback notifications from WP
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/{tenant_id}/update-guard")
+async def receive_update_guard_event(
+    tenant_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Receive update guard events from the WP plugin (pre-update, post-verify, rollback)."""
+    tenant = await _get_tenant(tenant_id, db)
+    body = await request.json()
+
+    action = body.get("action", "unknown")
+    data = body.get("data", {})
+
+    # Map action to severity
+    severity_map = {
+        "pre_update": "info",
+        "post_update_verify": "info",
+        "auto_rollback": "critical",
+    }
+    verdict = data.get("verdict", "ok")
+    if verdict == "critical":
+        severity = "critical"
+    elif verdict == "warning":
+        severity = "warning"
+    else:
+        severity = severity_map.get(action, "info")
+
+    # Log as system event
+    try:
+        from app.services.event_bus import emit
+        await emit(
+            db, domain="system", action=f"update_guard_{action}",
+            title=f"Update Guard: {action.replace('_', ' ').title()} — {verdict}",
+            severity=severity, tenant_id=tenant.id, source="update_guard",
+            data=data,
+        )
+    except Exception:
+        pass
+
+    # Store latest update guard state in tenant settings
+    settings = tenant.settings or {}
+    settings["update_guard"] = {
+        "last_action": action,
+        "last_verdict": verdict,
+        "timestamp": body.get("timestamp"),
+        "data": {k: v for k, v in data.items() if k in ("verdict", "issues", "rolled_back", "vitals")},
+    }
+    tenant.settings = settings
+    await db.flush()
+
+    return {"status": "received", "action": action}

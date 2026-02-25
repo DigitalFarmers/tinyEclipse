@@ -4,7 +4,7 @@ Handles client sync, order provisioning, SSO, and product mapping.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -97,7 +97,7 @@ class WHMCSClient:
 
     # ─── Invoices ───
 
-    async def get_invoices(self, client_id: int | None = None, status: str = "Unpaid") -> dict:
+    async def get_invoices(self, client_id: Optional[int] = None, status: str = "Unpaid") -> dict:
         """Get invoices, optionally filtered by client and status."""
         params = {"status": status}
         if client_id:
@@ -110,7 +110,7 @@ class WHMCSClient:
 
     # ─── Tickets ───
 
-    async def get_tickets(self, client_id: int | None = None, status: str = "Open") -> dict:
+    async def get_tickets(self, client_id: Optional[int] = None, status: str = "Open") -> dict:
         """Get support tickets."""
         params = {"status": status}
         if client_id:
@@ -166,7 +166,7 @@ class WHMCSClient:
 
     # ─── Plan Mapping ───
 
-    def product_id_to_plan(self, product_id: int) -> str | None:
+    def product_id_to_plan(self, product_id: int) -> Optional[str]:
         """Map WHMCS product ID to Eclipse plan name."""
         mapping = {
             settings.whmcs_product_tiny: "tiny",
@@ -175,7 +175,7 @@ class WHMCSClient:
         }
         return mapping.get(product_id)
 
-    def plan_to_product_id(self, plan: str) -> int | None:
+    def plan_to_product_id(self, plan: str) -> Optional[int]:
         """Map Eclipse plan name to WHMCS product ID."""
         mapping = {
             "tiny": settings.whmcs_product_tiny,
@@ -206,7 +206,7 @@ class WHMCSClient:
 
 
 # Singleton
-_whmcs_client: WHMCSClient | None = None
+_whmcs_client: Optional[WHMCSClient] = None
 
 
 def get_whmcs_client() -> WHMCSClient:

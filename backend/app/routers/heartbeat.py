@@ -5,6 +5,7 @@ If a site goes silent, Eclipse raises an alarm. This is the watchdog.
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -30,25 +31,25 @@ admin_router = APIRouter(
 
 class HeartbeatPing(BaseModel):
     tenant_id: str
-    version: str | None = None
-    php_version: str | None = None
-    wp_version: str | None = None
-    plugin_version: str | None = None
-    active_plugins: list[str] | None = None
-    theme: str | None = None
-    memory_usage_mb: float | None = None
-    disk_usage_percent: float | None = None
-    db_size_mb: float | None = None
-    error_count_24h: int | None = None
-    warning_count_24h: int | None = None
-    cron_healthy: bool | None = None
-    last_backup: str | None = None
+    version: Optional[str] = None
+    php_version: Optional[str] = None
+    wp_version: Optional[str] = None
+    plugin_version: Optional[str] = None
+    active_plugins: Optional[List[str]] = None
+    theme: Optional[str] = None
+    memory_usage_mb: Optional[float] = None
+    disk_usage_percent: Optional[float] = None
+    db_size_mb: Optional[float] = None
+    error_count_24h: Optional[int] = None
+    warning_count_24h: Optional[int] = None
+    cron_healthy: Optional[bool] = None
+    last_backup: Optional[str] = None
     custom_data: dict = {}
 
 
 # In-memory heartbeat store (will be replaced with DB table in production)
 # For now this is fast and sufficient — the scheduler checks this
-_heartbeats: dict[str, dict] = {}
+_heartbeats: Dict[str, dict] = {}
 
 
 @public_router.post("/ping")

@@ -10,15 +10,21 @@ Auto-detected or manually configured modules like:
 - blog (WordPress posts)
 - booking (reserveringen)
 - forum (community/forum)
+- services (diensten, uurprijs, vaste prijs)
+- rental (verhuur, toestellen, ruimtes)
+- portfolio (projecten, realisaties, showcase)
+- packages (pakketten, arrangementen, bundels)
 - custom (anything else)
 
 Each module tracks its own stats and can feed into the events timeline.
 """
-import enum
 import uuid
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
+import enum
+from typing import Optional
 
-from sqlalchemy import String, Integer, Boolean, Enum, DateTime, ForeignKey, func
+from sqlalchemy import String, Integer, Boolean, Enum as SQLEnum, DateTime, ForeignKey, func, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,6 +40,10 @@ class ModuleType(str, enum.Enum):
     blog = "blog"
     booking = "booking"
     forum = "forum"
+    services = "services"
+    rental = "rental"
+    portfolio = "portfolio"
+    packages = "packages"
     custom = "custom"
 
 
@@ -50,9 +60,9 @@ class SiteModule(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
 
-    module_type: Mapped[ModuleType] = mapped_column(Enum(ModuleType), nullable=False, index=True)
+    module_type: Mapped[ModuleType] = mapped_column(SQLEnum(ModuleType), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)  # e.g. "Vacatures", "Webshop", "Cadeaubonnen"
-    status: Mapped[ModuleStatus] = mapped_column(Enum(ModuleStatus), nullable=False, default=ModuleStatus.active)
+    status: Mapped[ModuleStatus] = mapped_column(SQLEnum(ModuleStatus), nullable=False, default=ModuleStatus.active)
     auto_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Module-specific config
@@ -66,9 +76,9 @@ class SiteModule(Base):
     # e.g. for jobs: {"total_listings": 5, "applications_30d": 12}
     # e.g. for shop: {"total_products": 42, "orders_30d": 8}
 
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="modules")
+    tenant = relationship("Tenant", back_populates="site_modules")

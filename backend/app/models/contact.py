@@ -3,7 +3,8 @@ Contact model — Unified identity per person across all touchpoints.
 Automatically matched on email/phone across orders, chats, forms, leads.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import String, Integer, Float, Text, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -19,18 +20,18 @@ class Contact(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
 
     # Identity
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
-    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    company: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Location
-    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Language
-    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Aggregated stats (updated by matcher)
     total_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

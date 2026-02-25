@@ -604,6 +604,85 @@ class TinyEclipse_REST_API {
         ]);
 
         // ═══════════════════════════════════════════════════════════════
+        // ECOSYSTEM DETECTION ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/ecosystem/detect', [
+            'methods' => 'POST',
+            'callback' => function () {
+                $hub = TinyEclipse_Hub::instance();
+                $ecosystem = $hub->detect_ecosystem();
+                return new WP_REST_Response([
+                    'success' => true,
+                    'ecosystem' => $ecosystem,
+                    'timestamp' => current_time('c')
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/ecosystem/capabilities', [
+            'methods' => 'GET',
+            'callback' => function ($request) {
+                $plugin_type = $request->get_param('type');
+                $hub = TinyEclipse_Hub::instance();
+                
+                if ($plugin_type) {
+                    $capabilities = $hub->get_plugin_capabilities($plugin_type);
+                } else {
+                    // Get all capabilities
+                    $ecosystem_data = get_option('tinyeclipse_ecosystem_data', []);
+                    $capabilities = $ecosystem_data['capabilities'] ?? [];
+                }
+                
+                return new WP_REST_Response([
+                    'success' => true,
+                    'plugin_type' => $plugin_type,
+                    'capabilities' => $capabilities
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/ecosystem/adapt', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $plugin_type = $request->get_param('plugin_type');
+                $action = $request->get_param('action');
+                $data = $request->get_param('data') ?: [];
+                
+                $hub = TinyEclipse_Hub::instance();
+                $result = $hub->adapt_to_plugin($plugin_type, $action, $data);
+                
+                return new WP_REST_Response([
+                    'success' => !isset($result['error']),
+                    'result' => $result,
+                    'timestamp' => current_time('c')
+                ], isset($result['error']) ? 400 : 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/ecosystem/status', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $ecosystem_data = get_option('tinyeclipse_ecosystem_data', []);
+                $last_scan = get_option('tinyeclipse_ecosystem_last_scan', '');
+                
+                return new WP_REST_Response([
+                    'success' => true,
+                    'has_data' => !empty($ecosystem_data),
+                    'last_scan' => $last_scan,
+                    'confidence_score' => $ecosystem_data['confidence_score'] ?? 0,
+                    'plugin_count' => count($ecosystem_data['plugins'] ?? []),
+                    'detected_types' => array_unique(array_column($ecosystem_data['plugins'] ?? [], 'type')),
+                    'integrations' => array_keys($ecosystem_data['integrations'] ?? [])
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
         // WPML COMPAT ROUTES (from old connector)
         // ═══════════════════════════════════════════════════════════════
 
@@ -754,6 +833,9 @@ class TinyEclipse_REST_API {
                     'products' => TinyEclipse_Collector::instance()->collect_product_intelligence(),
                     'opening_hours' => TinyEclipse_Collector::instance()->collect_opening_hours(),
                     'site_content' => TinyEclipse_Collector::instance()->collect_all(),
+                    'faq_text' => TinyEclipse_FAQ::instance()->get_knowledge_text(),
+                    'business_text' => TinyEclipse_Business::instance()->get_knowledge_text(),
+                    'site_intelligence_text' => TinyEclipse_Site_Intelligence::instance()->get_knowledge_text(),
                 ];
                 
                 // Send to Hub
@@ -801,6 +883,257 @@ class TinyEclipse_REST_API {
                     'has_acf' => function_exists('get_field'),
                     'auto_sync_enabled' => get_option('tinyeclipse_auto_knowledge_sync', true),
                     'sync_interval' => get_option('tinyeclipse_knowledge_sync_interval', 'hourly'),
+                ], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
+        // FAQ ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/faq', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $faq = TinyEclipse_FAQ::instance();
+                return new WP_REST_Response(['items' => $faq->get_all()], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/faq/create', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $faq = TinyEclipse_FAQ::instance();
+                $item = $faq->create($request->get_json_params());
+                return new WP_REST_Response($item, 201);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/faq/(?P<id>\d+)', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $faq = TinyEclipse_FAQ::instance();
+                $item = $faq->update($request['id'], $request->get_json_params());
+                if (!$item) return new WP_REST_Response(['error' => 'Not found'], 404);
+                return new WP_REST_Response($item, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/faq/(?P<id>\d+)/delete', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $faq = TinyEclipse_FAQ::instance();
+                $faq->delete($request['id']);
+                return new WP_REST_Response(['deleted' => true], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/faq/reorder', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $faq = TinyEclipse_FAQ::instance();
+                $data = $request->get_json_params();
+                $items = $faq->reorder($data['order'] ?? []);
+                return new WP_REST_Response(['items' => $items], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
+        // BUSINESS PROFILE & LOCATIONS ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/business/profile', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $biz = TinyEclipse_Business::instance();
+                return new WP_REST_Response($biz->get_profile(), 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/business/profile', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $biz = TinyEclipse_Business::instance();
+                $profile = $biz->save_profile($request->get_json_params());
+                return new WP_REST_Response($profile, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/business/locations', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $biz = TinyEclipse_Business::instance();
+                return new WP_REST_Response(['locations' => $biz->get_locations()], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/business/locations', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $biz = TinyEclipse_Business::instance();
+                $loc = $biz->create_location($request->get_json_params());
+                return new WP_REST_Response($loc, 201);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/business/locations/(?P<id>\d+)', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $biz = TinyEclipse_Business::instance();
+                $loc = $biz->update_location($request['id'], $request->get_json_params());
+                if (!$loc) return new WP_REST_Response(['error' => 'Not found'], 404);
+                return new WP_REST_Response($loc, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/business/locations/(?P<id>\d+)/delete', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $biz = TinyEclipse_Business::instance();
+                $biz->delete_location($request['id']);
+                return new WP_REST_Response(['deleted' => true], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
+        // SEO / OPENGRAPH / LINKS ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/seo/audit', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $seo = TinyEclipse_SEO::instance();
+                $audit = $seo->audit();
+                return new WP_REST_Response($audit, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/pages', [
+            'methods' => 'GET',
+            'callback' => function ($request) {
+                $og = TinyEclipse_OpenGraph::instance();
+                $limit = $request->get_param('limit') ?: 50;
+                return new WP_REST_Response(['pages' => $og->get_seo_pages($limit)], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/opengraph', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $og = TinyEclipse_OpenGraph::instance();
+                return new WP_REST_Response(['pages' => $og->get_all_og()], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/opengraph/(?P<id>\d+)', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $og = TinyEclipse_OpenGraph::instance();
+                $result = $og->update_og($request['id'], $request->get_json_params());
+                return new WP_REST_Response($result, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/links', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $og = TinyEclipse_OpenGraph::instance();
+                return new WP_REST_Response(['redirects' => $og->get_redirects()], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/links/broken', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $og = TinyEclipse_OpenGraph::instance();
+                return new WP_REST_Response(['broken_links' => $og->scan_broken_links()], 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/seo/links/redirect', [
+            'methods' => 'POST',
+            'callback' => function ($request) {
+                $og = TinyEclipse_OpenGraph::instance();
+                $redirect = $og->create_redirect($request->get_json_params());
+                return new WP_REST_Response($redirect, 201);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        // ═══════════════════════════════════════════════════════════════
+        // SITE INTELLIGENCE ROUTES
+        // ═══════════════════════════════════════════════════════════════
+
+        register_rest_route('tinyeclipse/v1', '/site-intelligence/deep-scan', [
+            'methods' => 'POST',
+            'callback' => function () {
+                $si = TinyEclipse_Site_Intelligence::instance();
+                $scan = $si->run_deep_scan();
+
+                // Send results to Hub
+                $tenant_id = tinyeclipse_get_tenant_id();
+                if (!empty($tenant_id)) {
+                    wp_remote_post(TINYECLIPSE_API_BASE . '/api/admin/wp/' . $tenant_id . '/deep-scan', [
+                        'timeout'  => 15,
+                        'blocking' => false,
+                        'headers'  => ['Content-Type' => 'application/json', 'X-Tenant-Id' => $tenant_id],
+                        'body'     => wp_json_encode($scan),
+                    ]);
+                }
+
+                return new WP_REST_Response($scan, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/site-intelligence/scan', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $si = TinyEclipse_Site_Intelligence::instance();
+                $scan = $si->get_last_scan();
+                if (!$scan) {
+                    return new WP_REST_Response(['message' => 'No scan available. Run POST /site-intelligence/deep-scan first.'], 404);
+                }
+                return new WP_REST_Response($scan, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/site-intelligence/pages', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $si = TinyEclipse_Site_Intelligence::instance();
+                $content = $si->analyze_content();
+                return new WP_REST_Response($content, 200);
+            },
+            'permission_callback' => 'tinyeclipse_verify_request',
+        ]);
+
+        register_rest_route('tinyeclipse/v1', '/site-intelligence/translations', [
+            'methods' => 'GET',
+            'callback' => function () {
+                $si = TinyEclipse_Site_Intelligence::instance();
+                return new WP_REST_Response([
+                    'languages'   => $si->analyze_languages(),
+                    'completeness'=> $si->analyze_translation_completeness(),
+                    'seo'         => $si->analyze_seo_per_language(),
                 ], 200);
             },
             'permission_callback' => 'tinyeclipse_verify_request',

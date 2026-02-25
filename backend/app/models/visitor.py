@@ -4,9 +4,10 @@ Tracks every visitor session, page view, event, and builds user journeys.
 """
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
-from sqlalchemy import String, Integer, Float, Boolean, Text, Enum, DateTime, ForeignKey, func
+from sqlalchemy import String, Integer, Enum as SQLEnum, DateTime, ForeignKey, func, Float, Boolean, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,23 +24,23 @@ class VisitorSession(Base):
     session_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
 
     # Source
-    referrer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    utm_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    utm_medium: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    utm_campaign: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    landing_page: Mapped[str | None] = mapped_column(Text, nullable=True)
+    referrer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    utm_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    utm_medium: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    utm_campaign: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    landing_page: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Device
-    device_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # mobile, desktop, tablet
-    browser: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    os: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    screen_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    screen_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    device_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # mobile, desktop, tablet
+    browser: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    os: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    screen_width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    screen_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Geo (from IP, privacy-safe)
-    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Session stats
     page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -50,12 +51,12 @@ class VisitorSession(Base):
     chat_initiated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # AI insights
-    intent_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-1 purchase/conversion intent
-    help_needed_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-1 likelihood needs help
-    engagement_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-1 engagement level
+    intent_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-1 purchase/conversion intent
+    help_needed_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-1 likelihood needs help
+    engagement_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0-1 engagement level
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     page_views = relationship("PageView", back_populates="session", lazy="dynamic", order_by="PageView.created_at")
@@ -72,7 +73,7 @@ class PageView(Base):
 
     url: Mapped[str] = mapped_column(Text, nullable=False)
     path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
-    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Engagement
     time_on_page_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -109,10 +110,10 @@ class VisitorEvent(Base):
     session_id: Mapped[str] = mapped_column(String(64), ForeignKey("visitor_sessions.session_id"), nullable=False, index=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
 
-    event_type: Mapped[EventType] = mapped_column(Enum(EventType), nullable=False, index=True)
+    event_type: Mapped[EventType] = mapped_column(SQLEnum(EventType), nullable=False, index=True)
     page_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    element: Mapped[str | None] = mapped_column(String(200), nullable=True)  # CSS selector or element description
-    value: Mapped[str | None] = mapped_column(Text, nullable=True)  # Event-specific value
+    element: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # CSS selector or element description
+    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Event-specific value
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

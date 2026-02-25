@@ -2,6 +2,7 @@
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -30,14 +31,14 @@ class CheckCreate(BaseModel):
     check_type: str
     target: str
     interval_minutes: int = 5
-    config: dict = {}
+    config: Dict = {}
 
 
 class CheckUpdate(BaseModel):
-    enabled: bool | None = None
-    interval_minutes: int | None = None
-    config: dict | None = None
-    target: str | None = None
+    enabled: Optional[bool] = None
+    interval_minutes: Optional[int] = None
+    config: Optional[Dict] = None
+    target: Optional[str] = None
 
 
 # ─── Dashboard Overview ───
@@ -106,6 +107,12 @@ async def monitoring_dashboard(tenant_id: str, db: AsyncSession = Depends(get_db
                 "acknowledged": a.acknowledged,
                 "resolved": a.resolved,
                 "created_at": a.created_at.isoformat(),
+                "occurrence_count": getattr(a, 'occurrence_count', 1) or 1,
+                "last_seen_at": a.last_seen_at.isoformat() if getattr(a, 'last_seen_at', None) else None,
+                "classification": a.classification.value if getattr(a, 'classification', None) else None,
+                "priority_score": getattr(a, 'priority_score', None),
+                "auto_fix_status": getattr(a, 'auto_fix_status', None),
+                "resolved_by": getattr(a, 'resolved_by', None),
             }
             for a in alerts[:20]
         ],
@@ -289,9 +296,74 @@ async def list_alerts(tenant_id: str, resolved: bool = False, limit: int = 50, d
             "resolved": a.resolved,
             "created_at": a.created_at.isoformat(),
             "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+            "occurrence_count": getattr(a, 'occurrence_count', 1) or 1,
+            "last_seen_at": a.last_seen_at.isoformat() if getattr(a, 'last_seen_at', None) else None,
+            "classification": a.classification.value if getattr(a, 'classification', None) else None,
+            "priority_score": getattr(a, 'priority_score', None),
+            "auto_fix_status": getattr(a, 'auto_fix_status', None),
+            "resolved_by": getattr(a, 'resolved_by', None),
         }
         for a in alerts
     ]
+
+
+@router.get("/priority-inbox/{tenant_id}")
+async def priority_inbox(tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """AI-driven priority inbox: top actions, auto-resolved, suppressed."""
+    tid = uuid.UUID(tenant_id)
+
+    # Open alerts sorted by priority score
+    open_result = await db.execute(
+        select(Alert).where(and_(
+            Alert.tenant_id == tid, Alert.resolved == False,
+        )).order_by(Alert.priority_score.desc().nullslast(), Alert.created_at.desc())
+    )
+    open_alerts = open_result.scalars().all()
+
+    # Recently auto-resolved (last 7 days)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    resolved_result = await db.execute(
+        select(Alert).where(and_(
+            Alert.tenant_id == tid, Alert.resolved == True,
+            Alert.resolved_at >= week_ago,
+        )).order_by(Alert.resolved_at.desc()).limit(20)
+    )
+    resolved_alerts = resolved_result.scalars().all()
+
+    def _serialize(a):
+        return {
+            "id": str(a.id), "check_id": str(a.check_id),
+            "severity": a.severity.value, "title": a.title, "message": a.message,
+            "acknowledged": a.acknowledged, "resolved": a.resolved,
+            "created_at": a.created_at.isoformat(),
+            "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+            "occurrence_count": getattr(a, 'occurrence_count', 1) or 1,
+            "last_seen_at": a.last_seen_at.isoformat() if getattr(a, 'last_seen_at', None) else None,
+            "classification": a.classification.value if getattr(a, 'classification', None) else None,
+            "priority_score": getattr(a, 'priority_score', None),
+            "auto_fix_status": getattr(a, 'auto_fix_status', None),
+            "resolved_by": getattr(a, 'resolved_by', None),
+        }
+
+    # Split open alerts into categories
+    needs_attention = [a for a in open_alerts if getattr(a, 'classification', None) and a.classification.value == 'needs_attention']
+    auto_fixable = [a for a in open_alerts if getattr(a, 'classification', None) and a.classification.value == 'auto_fixable']
+    informational = [a for a in open_alerts if not getattr(a, 'classification', None) or a.classification.value == 'informational']
+    auto_resolved = [a for a in resolved_alerts if getattr(a, 'resolved_by', None) == 'auto_recovery']
+
+    return {
+        "summary": {
+            "total_open": len(open_alerts),
+            "needs_attention": len(needs_attention),
+            "auto_fixable": len(auto_fixable),
+            "informational": len(informational),
+            "auto_resolved_7d": len(auto_resolved),
+        },
+        "priority_actions": [_serialize(a) for a in needs_attention[:5]],
+        "auto_fixable": [_serialize(a) for a in auto_fixable],
+        "informational": [_serialize(a) for a in informational],
+        "auto_resolved": [_serialize(a) for a in auto_resolved[:10]],
+    }
 
 
 @router.post("/alerts/{alert_id}/acknowledge")

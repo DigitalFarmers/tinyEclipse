@@ -27,8 +27,10 @@ import {
   TrendingUp,
   Shield,
   Crown,
+  Languages,
 } from "lucide-react";
 import { usePortalSession } from "@/lib/usePortalSession";
+import { DashboardSkeleton } from "@/components/StatSkeleton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -88,12 +90,7 @@ export default function PortalDashboard() {
   if (!session) return null;
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-white/40">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-        <span className="mt-3 text-sm">Command Center laden...</span>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (!data) {
@@ -120,15 +117,24 @@ export default function PortalDashboard() {
         </button>
       </div>
 
-      {/* ── Totals Row ── */}
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <StatMini icon={MessageSquare} label="Chats 24u" value={t.chats_24h} color="brand" />
-        <StatMini icon={Users} label="Bezoekers" value={t.visitors_24h} color="blue" />
-        <StatMini icon={ShoppingCart} label="Orders" value={t.orders_24h} color="green" />
-        <StatMini icon={FileText} label="Formulieren" value={t.forms_24h} color="purple" />
-        <StatMini icon={Briefcase} label="Sollicitaties" value={t.jobs_24h} color="cyan" />
-        <StatMini icon={ShieldAlert} label="Alerts" value={t.open_alerts} color={t.open_alerts > 0 ? "red" : "green"} />
-      </div>
+      {/* ── Totals Row — only show relevant stats ── */}
+      {(() => {
+        const hasModule = (type: string) => data.projects.some(p => p.modules.some(m => m.type === type));
+        const stats: { icon: any; label: string; value: number; color: string }[] = [
+          { icon: MessageSquare, label: "Gesprekken", value: t.chats_24h, color: "brand" },
+          { icon: Users, label: "Bezoekers", value: t.visitors_24h, color: "blue" },
+        ];
+        if (hasModule("shop")) stats.push({ icon: ShoppingCart, label: "Bestellingen", value: t.orders_24h, color: "green" });
+        if (hasModule("forms")) stats.push({ icon: FileText, label: "Formulieren", value: t.forms_24h, color: "purple" });
+        if (hasModule("jobs")) stats.push({ icon: Briefcase, label: "Sollicitaties", value: t.jobs_24h, color: "cyan" });
+        stats.push({ icon: ShieldAlert, label: "Meldingen", value: t.open_alerts, color: t.open_alerts > 0 ? "red" : "green" });
+        const cols = stats.length <= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6";
+        return (
+          <div className={`mt-5 grid gap-2 ${cols}`}>
+            {stats.map((s, i) => <StatMini key={i} icon={s.icon} label={s.label} value={s.value} color={s.color} />)}
+          </div>
+        );
+      })()}
 
       {/* ── Project Cards ── */}
       <h2 className="mt-8 mb-3 text-xs font-semibold uppercase tracking-widest text-white/25">
@@ -159,6 +165,23 @@ export default function PortalDashboard() {
                 <span className="flex items-center gap-1"><MessageSquare className="h-2.5 w-2.5" /> {p.stats.chats_24h} chats</span>
                 {p.stats.open_alerts > 0 && <span className="flex items-center gap-1 text-red-400"><ShieldAlert className="h-2.5 w-2.5" /> {p.stats.open_alerts}</span>}
                 <span className="flex items-center gap-1"><Database className="h-2.5 w-2.5" /> {p.stats.knowledge_sources} bronnen</span>
+                {(p as any).content_units && (
+                  <span className="flex items-center gap-1">
+                    <FileText className="h-2.5 w-2.5" />
+                    {(p as any).content_units.unique_total} pagina&apos;s
+                    {(p as any).content_units.wpml_grouped && (
+                      <span className="text-brand-400">×{(p as any).content_units.language_count}</span>
+                    )}
+                  </span>
+                )}
+                {(p as any).site_rating && (
+                  <span className={`flex items-center gap-1 font-bold ${
+                    (p as any).site_rating.overall_rating?.startsWith('A') ? 'text-green-400' :
+                    (p as any).site_rating.overall_rating?.startsWith('B') ? 'text-brand-400' : 'text-yellow-400'
+                  }`}>
+                    <TrendingUp className="h-2.5 w-2.5" /> {(p as any).site_rating.overall_rating}
+                  </span>
+                )}
               </div>
 
               {/* Modules */}

@@ -24,6 +24,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getTenants } from "@/lib/api";
+import { ListRowSkeleton, StatSkeleton } from "@/components/StatSkeleton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY || "";
@@ -32,15 +33,25 @@ interface Tenant {
   id: string;
   name: string;
   domain: string;
+  whmcs_client_id?: number;
+}
+
+interface ClientOption {
+  whmcs_client_id: number;
+  name: string;
+  tenant_count: number;
 }
 
 export default function InsightsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = useState("");
   const [period, setPeriod] = useState("week");
-  const [mode, setMode] = useState<"global" | "site">("global");
+  const [mode, setMode] = useState<"global" | "client" | "site">("global");
   const [globalData, setGlobalData] = useState<any>(null);
+  const [clientData, setClientData] = useState<any>(null);
   const [siteData, setSiteData] = useState<any>(null);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [selectedClient, setSelectedClient] = useState<number>(0);
   const [suggestions, setSuggestions] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -49,13 +60,26 @@ export default function InsightsPage() {
     getTenants().then((t) => {
       setTenants(t);
       if (t.length > 0) setSelectedTenant(t[0].id);
+      // Build unique client list
+      const clientMap: Record<number, { name: string; count: number }> = {};
+      t.forEach((tenant: any) => {
+        const cid = tenant.whmcs_client_id;
+        if (cid) {
+          if (!clientMap[cid]) clientMap[cid] = { name: tenant.name, count: 0 };
+          clientMap[cid].count++;
+        }
+      });
+      const cl = Object.entries(clientMap).map(([id, v]) => ({ whmcs_client_id: Number(id), name: v.name, tenant_count: v.count }));
+      setClients(cl);
+      if (cl.length > 0) setSelectedClient(cl[0].whmcs_client_id);
     });
   }, []);
 
   useEffect(() => {
     if (mode === "global") loadGlobal();
-    else if (selectedTenant) loadSite();
-  }, [mode, period, selectedTenant]);
+    else if (mode === "client" && selectedClient) loadClient();
+    else if (mode === "site" && selectedTenant) loadSite();
+  }, [mode, period, selectedTenant, selectedClient]);
 
   async function loadGlobal() {
     setLoading(true);
@@ -65,6 +89,19 @@ export default function InsightsPage() {
         cache: "no-store",
       });
       if (r.ok) setGlobalData(await r.json());
+    } catch {}
+    setLoading(false);
+  }
+
+  async function loadClient() {
+    if (!selectedClient) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/insights/client/${selectedClient}?period=${period}`, {
+        headers: { "X-Admin-Key": ADMIN_KEY },
+        cache: "no-store",
+      });
+      if (r.ok) setClientData(await r.json());
     } catch {}
     setLoading(false);
   }
@@ -111,8 +148,14 @@ export default function InsightsPage() {
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-white/10 bg-white/5">
             <button onClick={() => setMode("global")} className={`px-3 py-1.5 text-xs font-medium transition ${mode === "global" ? "bg-brand-600 text-white rounded-lg" : "text-white/50 hover:text-white"}`}>Globaal</button>
+            <button onClick={() => setMode("client")} className={`px-3 py-1.5 text-xs font-medium transition ${mode === "client" ? "bg-brand-600 text-white rounded-lg" : "text-white/50 hover:text-white"}`}>Per Klant</button>
             <button onClick={() => setMode("site")} className={`px-3 py-1.5 text-xs font-medium transition ${mode === "site" ? "bg-brand-600 text-white rounded-lg" : "text-white/50 hover:text-white"}`}>Per Site</button>
           </div>
+          {mode === "client" && (
+            <select value={selectedClient} onChange={(e) => setSelectedClient(Number(e.target.value))} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 outline-none">
+              {clients.map((c) => <option key={c.whmcs_client_id} value={c.whmcs_client_id} className="bg-brand-950">{c.name} ({c.tenant_count} sites)</option>)}
+            </select>
+          )}
           {mode === "site" && (
             <select value={selectedTenant} onChange={(e) => setSelectedTenant(e.target.value)} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 outline-none">
               {tenants.map((t) => <option key={t.id} value={t.id} className="bg-brand-950">{t.name}</option>)}
@@ -124,19 +167,21 @@ export default function InsightsPage() {
             <option value="month" className="bg-brand-950">Maand</option>
             <option value="year" className="bg-brand-950">Jaar</option>
           </select>
-          <button onClick={() => mode === "global" ? loadGlobal() : loadSite()} disabled={loading} className="rounded-lg bg-white/5 p-2 text-white/40 transition hover:bg-white/10 disabled:opacity-50">
+          <button onClick={() => mode === "global" ? loadGlobal() : mode === "client" ? loadClient() : loadSite()} disabled={loading} className="rounded-lg bg-white/5 p-2 text-white/40 transition hover:bg-white/10 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-16 flex flex-col items-center justify-center gap-3 text-white/40">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-          <span className="text-sm">AI analyseert data...</span>
+        <div className="mt-6 space-y-4">
+          <div className="animate-pulse rounded-xl border border-brand-500/10 bg-brand-500/5 p-5"><div className="h-4 w-64 rounded bg-white/5" /><div className="mt-2 h-3 w-96 rounded bg-white/[0.03]" /></div>
+          <StatSkeleton count={6} />
         </div>
       ) : mode === "global" && globalData ? (
         <GlobalView data={globalData} period={PERIOD_LABELS[period]} />
+      ) : mode === "client" && clientData ? (
+        <ClientView data={clientData} period={PERIOD_LABELS[period]} />
       ) : mode === "site" && siteData ? (
         <>
           <SiteView data={siteData} period={PERIOD_LABELS[period]} />
@@ -262,6 +307,95 @@ function GlobalView({ data, period }: { data: any; period: string }) {
       {data.sites?.length > 0 && (
         <>
           <h2 className="mt-8 mb-3 text-xs font-semibold uppercase tracking-widest text-white/25">Alle Sites ({data.sites.length})</h2>
+          <div className="space-y-2">
+            {data.sites.map((s: any) => (
+              <Link key={s.tenant_id} href={`/admin/tenants/${s.tenant_id}`} className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] p-3 transition hover:border-white/10 hover:bg-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <Globe className="h-4 w-4 text-white/30" />
+                  <div>
+                    <span className="text-xs font-semibold">{s.name}</span>
+                    <span className="ml-2 text-[10px] text-white/30">{s.domain}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-[10px] text-white/40">
+                  <span>{s.sessions} bezoekers</span>
+                  <span>{s.conversations} chats</span>
+                  <span className={s.sessions_change >= 0 ? "text-green-400" : "text-red-400"}>{s.sessions_change > 0 ? "+" : ""}{s.sessions_change}%</span>
+                  {s.unresolved_alerts > 0 && <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-red-400">{s.unresolved_alerts} alerts</span>}
+                  <ArrowRight className="h-3 w-3 text-white/20" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function ClientView({ data, period }: { data: any; period: string }) {
+  const ai = data.ai || {};
+  const t = data.totals || {};
+  return (
+    <>
+      {/* Client AI Headline */}
+      {ai.headline && (
+        <div className="mt-6 rounded-xl border border-purple-500/20 bg-gradient-to-r from-purple-500/10 to-brand-500/10 p-5">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
+            <div>
+              <h2 className="text-sm font-bold">{data.client_name} — {ai.headline}</h2>
+              <p className="mt-1 text-xs text-white/50">{ai.summary}</p>
+            </div>
+          </div>
+          {ai.client_health !== undefined && (
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-2 flex-1 rounded-full bg-white/10">
+                <div className="h-2 rounded-full bg-purple-500 transition-all" style={{ width: `${ai.client_health}%` }} />
+              </div>
+              <span className="text-xs font-bold text-purple-400">{ai.client_health}/100</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Totals */}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat icon={Globe} label="Sites" value={t.sites} color="purple" />
+        <Stat icon={Users} label="Bezoekers" value={t.sessions} color="blue" />
+        <Stat icon={MessageSquare} label="Gesprekken" value={t.conversations} color="brand" />
+        <Stat icon={Brain} label="Escalaties" value={t.escalations} color="orange" />
+        <Stat icon={ShieldAlert} label="Alerts" value={t.alerts} color={t.unresolved_alerts > 0 ? "red" : "green"} />
+        <Stat icon={AlertTriangle} label="Onopgelost" value={t.unresolved_alerts} color={t.unresolved_alerts > 0 ? "red" : "green"} />
+      </div>
+
+      {/* AI Insights */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        {ai.highlights?.length > 0 && (
+          <div className="rounded-xl border border-green-500/10 bg-green-500/5 p-4">
+            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-green-400"><CheckCircle2 className="h-3.5 w-3.5" /> Positief</h3>
+            <ul className="mt-3 space-y-2">{ai.highlights.map((h: string, i: number) => <li key={i} className="text-xs text-white/50">• {h}</li>)}</ul>
+          </div>
+        )}
+        {ai.concerns?.length > 0 && (
+          <div className="rounded-xl border border-red-500/10 bg-red-500/5 p-4">
+            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-red-400"><AlertTriangle className="h-3.5 w-3.5" /> Aandachtspunten</h3>
+            <ul className="mt-3 space-y-2">{ai.concerns.map((c: string, i: number) => <li key={i} className="text-xs text-white/50">• {c}</li>)}</ul>
+          </div>
+        )}
+      </div>
+
+      {ai.opportunities?.length > 0 && (
+        <div className="mt-4 rounded-xl border border-yellow-500/10 bg-yellow-500/5 p-4">
+          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-yellow-400"><DollarSign className="h-3.5 w-3.5" /> Verkoopkansen</h3>
+          <ul className="mt-3 space-y-2">{ai.opportunities.map((o: string, i: number) => <li key={i} className="text-xs text-white/50">• {o}</li>)}</ul>
+        </div>
+      )}
+
+      {/* Per-site breakdown */}
+      {data.sites?.length > 0 && (
+        <>
+          <h2 className="mt-8 mb-3 text-xs font-semibold uppercase tracking-widest text-white/25">Sites van {data.client_name} ({data.sites.length})</h2>
           <div className="space-y-2">
             {data.sites.map((s: any) => (
               <Link key={s.tenant_id} href={`/admin/tenants/${s.tenant_id}`} className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] p-3 transition hover:border-white/10 hover:bg-white/[0.04]">

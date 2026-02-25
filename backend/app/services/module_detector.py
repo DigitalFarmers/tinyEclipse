@@ -10,6 +10,8 @@ Scans the site for known patterns:
 - Booking: /reserveren, /boeken
 - Mail: checked via DirectAdmin API (separate)
 """
+from __future__ import annotations
+from typing import Optional, List, Dict
 import logging
 from datetime import datetime, timezone
 
@@ -74,6 +76,38 @@ DETECTION_PATTERNS: dict[ModuleType, dict] = {
             "bbpress", "forum-topic", "buddypress", "community-forum",
         ],
         "label": "Forum",
+    },
+    ModuleType.services: {
+        "paths": ["/diensten", "/services", "/aanbod", "/tarieven", "/onze-diensten"],
+        "html_markers": [
+            "service-list", "dienst", "tarief", "uurprijs", "offerte",
+            "service-item", "onze-diensten", "service-card",
+        ],
+        "label": "Diensten",
+    },
+    ModuleType.rental: {
+        "paths": ["/verhuur", "/rental", "/huren", "/beschikbaarheid", "/te-huur"],
+        "html_markers": [
+            "rental", "verhuur", "huren", "beschikbaar", "borgsom",
+            "rental-item", "te-huur", "availability-calendar",
+        ],
+        "label": "Verhuur",
+    },
+    ModuleType.portfolio: {
+        "paths": ["/portfolio", "/projecten", "/realisaties", "/werk", "/gallery", "/ons-werk"],
+        "html_markers": [
+            "portfolio", "project-item", "realisatie", "gallery", "showcase",
+            "portfolio-grid", "project-card", "case-study",
+        ],
+        "label": "Portfolio",
+    },
+    ModuleType.packages: {
+        "paths": ["/pakketten", "/arrangementen", "/bundels", "/aanbiedingen"],
+        "html_markers": [
+            "package", "arrangement", "bundel", "pakket",
+            "package-card", "pricing-table", "bundle",
+        ],
+        "label": "Pakketten",
     },
 }
 
@@ -149,7 +183,7 @@ async def detect_modules(domain: str) -> list[dict]:
     return detected
 
 
-async def detect_mail_modules(domain: str, mailboxes: list[str] | None = None) -> dict | None:
+async def detect_mail_modules(domain: str, mailboxes: Optional[List[str]] = None) -> Optional[Dict]:
     """
     Detect mail module. This requires mailbox info (from DirectAdmin API or manual config).
     """

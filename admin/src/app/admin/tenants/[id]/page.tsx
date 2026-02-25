@@ -8,7 +8,7 @@ import {
   ArrowUpRight, RefreshCw, Copy, Check, TrendingUp,
   Briefcase, ShoppingCart, Gift, FileText, Mail, BookOpen,
   Calendar, MessageCircle, Puzzle, Scan, CheckCircle, XCircle,
-  AlertTriangle, Link2,
+  AlertTriangle, Link2, Languages, FileEdit, Wifi, MapPin,
 } from "lucide-react";
 import {
   getTenant, getMonitoringDashboard, getAnalytics,
@@ -48,6 +48,9 @@ export default function TenantDetailPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [intelligence, setIntelligence] = useState<any>(null);
+  const [deepScanning, setDeepScanning] = useState(false);
+  const [ipIntel, setIpIntel] = useState<any>(null);
 
   useEffect(() => { loadAll(); }, [id]);
 
@@ -67,6 +70,8 @@ export default function TenantDetailPage() {
       // Load modules and sibling projects
       fetch(`${API_URL}/api/portal/projects/${id}/modules`).then(r => r.ok ? r.json() : []).then(setModules).catch(() => {});
       fetch(`${API_URL}/api/portal/projects/by-tenant/${id}`).then(r => r.ok ? r.json() : null).then(d => { if (d?.projects) setSiblings(d.projects); }).catch(() => {});
+      fetch(`${API_URL}/api/portal/data/${id}/intelligence/scan`).then(r => r.ok ? r.json() : null).then(setIntelligence).catch(() => {});
+      fetch(`${API_URL}/api/admin/server/ip/${id}`, { headers: { "X-Admin-Key": ADMIN_KEY } }).then(r => r.ok ? r.json() : null).then(setIpIntel).catch(() => {});
     } finally { setLoading(false); }
   }
 
@@ -185,6 +190,119 @@ export default function TenantDetailPage() {
           </div>
         ) : <p className="py-4 text-center text-xs text-white/30">Geen modules — klik &quot;Scan Site&quot; om te detecteren</p>}
       </Sec>
+
+      {/* Site Intelligence */}
+      <Sec title="Site Intelligence" icon={TrendingUp}>
+        {intelligence ? (
+          <div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <p className="text-[10px] text-white/30">Overall Rating</p>
+                <p className={`mt-1 text-2xl font-bold ${
+                  intelligence.rating?.overall_rating?.startsWith('A') ? 'text-green-400' :
+                  intelligence.rating?.overall_rating?.startsWith('B') ? 'text-brand-400' : 'text-yellow-400'
+                }`}>{intelligence.rating?.overall_rating || '—'} <span className="text-sm text-white/30">{intelligence.rating?.overall_score}%</span></p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <p className="text-[10px] text-white/30">Content Units</p>
+                <p className="mt-1 text-2xl font-bold text-white">{intelligence.content?.total_content_units || 0}
+                  {intelligence.content?.wpml_grouped && <span className="ml-1 text-sm text-brand-400">×{intelligence.content?.language_count}</span>}
+                </p>
+                {intelligence.content?.wpml_grouped && <p className="text-[9px] text-white/20">{intelligence.content?.total_wp_posts} in WordPress</p>}
+              </div>
+              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <p className="text-[10px] text-white/30">Talen</p>
+                <p className="mt-1 text-2xl font-bold text-white">{intelligence.languages?.language_count || 1}</p>
+                <p className="text-[9px] text-white/20">{intelligence.languages?.wpml_active ? `WPML · ${intelligence.languages?.default_language?.toUpperCase()}` : 'Eentalig'}</p>
+              </div>
+              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <p className="text-[10px] text-white/30">Beveiliging</p>
+                <p className={`mt-1 text-2xl font-bold ${
+                  (intelligence.cyber?.score || 0) >= 80 ? 'text-green-400' : (intelligence.cyber?.score || 0) >= 50 ? 'text-yellow-400' : 'text-red-400'
+                }`}>{intelligence.cyber?.score || 0}%</p>
+                <p className="text-[9px] text-white/20">{intelligence.cyber?.rating}</p>
+              </div>
+            </div>
+            {intelligence.translation?.active && (
+              <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <div className="flex items-center gap-2">
+                  <Languages className="h-4 w-4 text-brand-400" />
+                  <span className="text-xs font-medium text-white/60">Vertaling: {intelligence.translation.overall_percentage}% compleet ({intelligence.translation.overall_rating})</span>
+                </div>
+                {intelligence.translation.recommendation && (
+                  <p className="mt-1 text-[10px] text-white/30">{intelligence.translation.recommendation.split('\n')[0]}</p>
+                )}
+              </div>
+            )}
+            {intelligence.scanned_at && <p className="mt-2 text-[9px] text-white/15">Scan: {new Date(intelligence.scanned_at).toLocaleString('nl-BE')}</p>}
+          </div>
+        ) : (
+          <div className="py-6 text-center">
+            <p className="text-xs text-white/30">Geen deep scan beschikbaar</p>
+            <button
+              onClick={async () => {
+                setDeepScanning(true);
+                try {
+                  const r = await fetch(`${API_URL}/api/portal/data/${id}/intelligence/deep-scan`, { method: 'POST' });
+                  if (r.ok) setIntelligence(await r.json());
+                } catch {} finally { setDeepScanning(false); }
+              }}
+              disabled={deepScanning}
+              className="mt-2 flex items-center gap-1.5 mx-auto rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-medium transition hover:bg-brand-500 disabled:opacity-50"
+            >
+              {deepScanning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Scan className="h-3 w-3" />}
+              {deepScanning ? 'Scannen...' : 'Deep Scan Starten'}
+            </button>
+          </div>
+        )}
+      </Sec>
+
+      {ipIntel && ipIntel.unique_ips > 0 && (
+        <Sec title="IP Intelligence" icon={Wifi}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="text-[9px] text-white/25 uppercase tracking-wider">Unieke IP&apos;s</div>
+              <p className="mt-1 text-xl font-bold">{ipIntel.unique_ips}</p>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="text-[9px] text-white/25 uppercase tracking-wider">Landen</div>
+              <p className="mt-1 text-xl font-bold">{ipIntel.unique_countries}</p>
+            </div>
+            <div className="col-span-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Locaties</div>
+              <div className="flex flex-wrap gap-1">
+                {(ipIntel.countries || []).slice(0, 8).map((c: string) => (
+                  <span key={c} className="rounded bg-white/5 px-2 py-0.5 text-[10px] text-white/50">{c}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+          {ipIntel.alerts && ipIntel.alerts.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {ipIntel.alerts.slice(0, 5).map((a: any, i: number) => (
+                <div key={i} className={`flex items-center gap-2 rounded-lg p-2 text-[11px] ${
+                  a.severity === "warning" ? "bg-yellow-500/5 border border-yellow-500/10 text-yellow-400" : "bg-blue-500/5 border border-blue-500/10 text-blue-400"
+                }`}>
+                  {a.type === "multi_user_ip" ? <Users className="h-3 w-3 flex-shrink-0" /> : <MapPin className="h-3 w-3 flex-shrink-0" />}
+                  <span>{a.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {ipIntel.ips && ipIntel.ips.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {ipIntel.ips.slice(0, 8).map((ip: any) => (
+                <div key={ip.ip_hash} className="flex items-center gap-3 rounded-lg bg-white/[0.02] p-2 text-[10px]">
+                  <span className="font-mono text-white/30">{ip.ip_hash}</span>
+                  <span className="text-white/40">{ip.city}{ip.city && ip.country ? ", " : ""}{ip.country}</span>
+                  <span className="text-white/20">{ip.isp}</span>
+                  <span className="ml-auto text-white/15">{ip.access_count}×</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Sec>
+      )}
 
       {siblings.length > 1 && (
         <Sec title="Zuster Projecten" icon={Link2}>

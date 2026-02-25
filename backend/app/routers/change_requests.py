@@ -5,6 +5,8 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -33,7 +35,7 @@ class CreateRequestBody(BaseModel):
     priority: str = "normal"
     title: str
     description: str
-    page_url: str | None = None
+    page_url: Optional[str] = None
 
 
 @portal_router.post("/")
@@ -87,13 +89,13 @@ admin_router = APIRouter(prefix="/api/admin/requests", tags=["admin-requests"], 
 
 
 class UpdateRequestBody(BaseModel):
-    status: str | None = None
-    admin_notes: str | None = None
-    priority: str | None = None
+    status: Optional[str] = None
+    admin_notes: Optional[str] = None
+    priority: Optional[str] = None
 
 
 @admin_router.get("/")
-async def list_all_requests(status: str | None = Query(None), tenant_id: str | None = Query(None), db: AsyncSession = Depends(get_db)):
+async def list_all_requests(status: Optional[str] = Query(None), tenant_id: Optional[str] = Query(None), db: AsyncSession = Depends(get_db)):
     q = "SELECT cr.id, cr.tenant_id, cr.whmcs_client_id, cr.request_type, cr.priority, cr.status, cr.title, cr.description, cr.page_url, cr.admin_notes, cr.created_at, cr.completed_at, t.name, t.domain FROM change_requests cr LEFT JOIN tenants t ON t.id = cr.tenant_id WHERE 1=1"
     params: dict = {}
     if status:

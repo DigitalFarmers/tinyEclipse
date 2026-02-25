@@ -8,6 +8,7 @@ Endpoints:
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, func, desc, or_
@@ -207,8 +208,8 @@ async def get_unified_dashboard(
 async def get_unified_events(
     whmcs_client_id: int,
     hours: int = Query(24, ge=1, le=720),
-    project: str | None = Query(None, description="Filter by tenant_id"),
-    event_type: str | None = Query(None),
+    project: Optional[str] = Query(None, description="Filter by tenant_id"),
+    event_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):

@@ -8,6 +8,7 @@ Instead of just scraping HTML, this:
 4. Builds rich, queryable knowledge base per tenant
 5. Falls back to sitemap + HTML scraping for non-WordPress sites
 """
+from __future__ import annotations
 import re
 import json
 import logging

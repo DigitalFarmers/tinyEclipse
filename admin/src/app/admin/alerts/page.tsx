@@ -8,12 +8,19 @@ import {
   ChevronDown, Search, Clock, ArrowUpRight,
 } from "lucide-react";
 import { getTenants, getAlerts, acknowledgeAlert, resolveAlert } from "@/lib/api";
+import { ListRowSkeleton } from "@/components/StatSkeleton";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY || "";
 
 interface Tenant { id: string; name: string; domain: string; }
 interface Alert {
   id: string; tenant_id: string; check_id: string; title: string;
-  severity: string; message: string; created_at: string;
+  severity: string; message: string; details?: any; created_at: string;
   acknowledged: boolean; resolved: boolean; resolved_at: string | null;
+  occurrence_count?: number; last_seen_at?: string | null;
+  classification?: string | null; priority_score?: number | null;
+  auto_fix_status?: string | null; resolved_by?: string | null;
 }
 
 const CHECK_ICONS: Record<string, any> = {
@@ -40,6 +47,8 @@ export default function AlertsPage() {
   const [filterTenant, setFilterTenant] = useState<string>("all");
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
+  const [expandedAlerts, setExpandedAlerts] = useState<Record<string, boolean>>({});
+  const [fixingHeaders, setFixingHeaders] = useState<Record<string, boolean>>({});
 
   useEffect(() => { loadAll(); }, [showResolved]);
 
@@ -58,6 +67,23 @@ export default function AlertsPage() {
       all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setAlerts(all);
     } finally { setLoading(false); }
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedAlerts(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  async function fixSecurityHeaders(tenantId: string, alertId: string) {
+    setFixingHeaders(prev => ({ ...prev, [alertId]: true }));
+    try {
+      await fetch(`${API_URL}/api/admin/wp/${tenantId}/fix/security-headers`, {
+        method: "POST",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      await resolveAlert(alertId);
+      await loadAll();
+    } catch {}
+    setFixingHeaders(prev => ({ ...prev, [alertId]: false }));
   }
 
   async function resolveAll() {
@@ -138,24 +164,28 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Priority Inbox Stats */}
+      <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
         <button onClick={() => { setFilterSeverity("all"); setShowResolved(false); }} className={`rounded-xl border p-4 text-left transition hover:border-white/10 ${filterSeverity === "all" && !showResolved ? "border-brand-500/30 bg-brand-500/5" : "border-white/5 bg-white/[0.02]"}`}>
           <div className="text-[10px] text-white/30 uppercase tracking-wider">🚨 Open</div>
           <p className="text-2xl font-bold mt-1">{totalOpen}</p>
         </button>
         <button onClick={() => { setFilterSeverity("critical"); setShowResolved(false); }} className={`rounded-xl border p-4 text-left transition hover:border-red-500/20 ${filterSeverity === "critical" ? "border-red-500/30 bg-red-500/5" : "border-white/5 bg-white/[0.02]"}`}>
-          <div className="text-[10px] text-white/30 uppercase tracking-wider">🔴 Critical</div>
+          <div className="text-[10px] text-white/30 uppercase tracking-wider">🔴 Actie nodig</div>
           <p className="text-2xl font-bold text-red-400 mt-1">{totalCritical}</p>
         </button>
         <button onClick={() => { setFilterSeverity("warning"); setShowResolved(false); }} className={`rounded-xl border p-4 text-left transition hover:border-yellow-500/20 ${filterSeverity === "warning" ? "border-yellow-500/30 bg-yellow-500/5" : "border-white/5 bg-white/[0.02]"}`}>
-          <div className="text-[10px] text-white/30 uppercase tracking-wider">🟡 Warning</div>
-          <p className="text-2xl font-bold text-yellow-400 mt-1">{totalWarning}</p>
+          <div className="text-[10px] text-white/30 uppercase tracking-wider">� Auto-fixable</div>
+          <p className="text-2xl font-bold text-yellow-400 mt-1">{alerts.filter(a => !a.resolved && a.classification === 'auto_fixable').length}</p>
         </button>
         <button onClick={() => { setShowResolved(true); setFilterSeverity("all"); }} className={`rounded-xl border p-4 text-left transition hover:border-green-500/20 ${showResolved ? "border-green-500/30 bg-green-500/5" : "border-white/5 bg-white/[0.02]"}`}>
           <div className="text-[10px] text-white/30 uppercase tracking-wider">✅ Opgelost</div>
           <p className="text-2xl font-bold text-green-400 mt-1">{totalResolved}</p>
         </button>
+        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-left">
+          <div className="text-[10px] text-white/30 uppercase tracking-wider">🤖 Auto-resolved</div>
+          <p className="text-2xl font-bold text-emerald-400 mt-1">{alerts.filter(a => a.resolved_by === 'auto_recovery').length}</p>
+        </div>
       </div>
 
       {/* Per-site alert summary */}
@@ -216,10 +246,7 @@ export default function AlertsPage() {
 
       {/* Alert List */}
       {loading ? (
-        <div className="mt-12 flex items-center justify-center gap-3 text-white/40">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-brand-500" />
-          <span className="text-sm">Loading...</span>
-        </div>
+        <div className="mt-6"><ListRowSkeleton count={5} /></div>
       ) : filtered.length === 0 ? (
         <div className="mt-12 rounded-2xl border border-dashed border-white/10 p-12 text-center">
           <CheckCircle className="mx-auto h-8 w-8 text-green-500/40" />
@@ -238,15 +265,15 @@ export default function AlertsPage() {
             return (
               <div
                 key={a.id}
-                className={`rounded-xl border p-4 transition ${
+                className={`rounded-xl border p-4 transition cursor-pointer ${
                   a.resolved
                     ? "border-white/5 bg-white/[0.02] opacity-60"
                     : a.severity === "critical"
-                    ? "border-red-500/20 bg-red-500/[0.03]"
-                    : "border-yellow-500/20 bg-yellow-500/[0.03]"
+                    ? "border-red-500/20 bg-red-500/[0.03] hover:bg-red-500/[0.05]"
+                    : "border-yellow-500/20 bg-yellow-500/[0.03] hover:bg-yellow-500/[0.05]"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3" onClick={() => toggleExpand(a.id)}>
                   <div className="flex items-start gap-3 min-w-0">
                     <div className="mt-0.5 flex-shrink-0">
                       {a.resolved
@@ -267,7 +294,7 @@ export default function AlertsPage() {
                           <Globe className="h-2.5 w-2.5" /> {tn(a.tenant_id)}
                         </Link>
                         {domain && (
-                          <a href={`https://${domain}`} target="_blank" rel="noopener" className="text-[10px] text-white/25 hover:text-brand-400 transition flex items-center gap-0.5">
+                          <a href={`https://${domain}`} target="_blank" rel="noopener" className="text-[10px] text-white/25 hover:text-brand-400 transition flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                             {domain} <ArrowUpRight className="h-2.5 w-2.5" />
                           </a>
                         )}
@@ -277,15 +304,40 @@ export default function AlertsPage() {
                         <span className="flex items-center gap-1 text-[10px] text-white/20">
                           <Clock className="h-2.5 w-2.5" /> {timeAgo(a.created_at)}
                         </span>
-                        {a.resolved && a.resolved_at && (
-                          <span className="text-[10px] text-green-400/50">
-                            ✓ opgelost {timeAgo(a.resolved_at)}
+                        {(a.occurrence_count ?? 1) > 1 && (
+                          <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-[9px] font-bold text-orange-400">
+                            ×{a.occurrence_count}
                           </span>
                         )}
+                        {a.classification && (
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
+                            a.classification === 'auto_fixable' ? 'bg-blue-500/15 text-blue-400' :
+                            a.classification === 'needs_attention' ? 'bg-red-500/15 text-red-400' :
+                            a.classification === 'suppressed' ? 'bg-white/5 text-white/30' :
+                            'bg-white/5 text-white/40'
+                          }`}>
+                            {a.classification === 'auto_fixable' ? '🔧 Auto-fix' :
+                             a.classification === 'needs_attention' ? '⚡ Actie' :
+                             a.classification === 'suppressed' ? '🔇 Onderdrukt' : '💡 Info'}
+                          </span>
+                        )}
+                        {a.priority_score != null && (
+                          <span className={`text-[9px] font-mono ${
+                            a.priority_score >= 70 ? 'text-red-400' : a.priority_score >= 40 ? 'text-yellow-400' : 'text-white/30'
+                          }`}>
+                            P{a.priority_score}
+                          </span>
+                        )}
+                        {a.resolved && a.resolved_at && (
+                          <span className="text-[10px] text-green-400/50">
+                            ✓ {a.resolved_by === 'auto_recovery' ? '🤖 auto-opgelost' : 'opgelost'} {timeAgo(a.resolved_at)}
+                          </span>
+                        )}
+                        <ChevronDown className={`h-3 w-3 text-white/20 transition-transform ${expandedAlerts[a.id] ? "rotate-180" : ""}`} />
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-shrink-0 items-center gap-2">
+                  <div className="flex flex-shrink-0 items-center gap-2" onClick={e => e.stopPropagation()}>
                     {!a.resolved && (
                       <>
                         {!a.acknowledged && (
@@ -316,6 +368,11 @@ export default function AlertsPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Expanded Detail Panel */}
+                {expandedAlerts[a.id] && (
+                  <AlertDetailPanel alert={a} checkType={ct} tenantId={a.tenant_id} onFix={fixSecurityHeaders} fixing={!!fixingHeaders[a.id]} />
+                )}
               </div>
             );
           })}
@@ -325,6 +382,139 @@ export default function AlertsPage() {
       <p className="mt-8 text-center text-[10px] text-white/15">
         {filtered.length} van {alerts.length} alerts · Elke alert moet opgelost worden
       </p>
+    </div>
+  );
+}
+
+function AlertDetailPanel({ alert, checkType, tenantId, onFix, fixing }: {
+  alert: Alert; checkType: string; tenantId: string;
+  onFix: (tenantId: string, alertId: string) => void; fixing: boolean;
+}) {
+  // Try to parse details from message if not in details field
+  let details: any = alert.details || null;
+  if (!details && alert.message) {
+    try {
+      const match = alert.message.match(/Details:\s*(\{[\s\S]*\})/);
+      if (match) details = JSON.parse(match[1].replace(/'/g, '"'));
+    } catch {}
+  }
+
+  return (
+    <div className="mt-3 border-t border-white/5 pt-3 space-y-3">
+      {/* Security Headers Detail */}
+      {checkType === "security_headers" && details && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-white/50">Security Headers Score</span>
+            <span className={`text-sm font-bold ${(details.score ?? 0) >= 80 ? "text-green-400" : (details.score ?? 0) >= 50 ? "text-yellow-400" : "text-red-400"}`}>
+              {details.score ?? 0}%
+            </span>
+          </div>
+          {details.missing && details.missing.length > 0 && (
+            <div>
+              <p className="text-[10px] text-red-400/70 font-medium mb-1">Ontbrekende headers:</p>
+              <div className="flex flex-wrap gap-1">
+                {details.missing.map((h: string) => (
+                  <span key={h} className="rounded bg-red-500/10 px-2 py-0.5 text-[10px] font-mono text-red-400">{h}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {details.present && details.present.length > 0 && (
+            <div>
+              <p className="text-[10px] text-green-400/70 font-medium mb-1">Aanwezige headers:</p>
+              <div className="flex flex-wrap gap-1">
+                {details.present.map((h: string) => (
+                  <span key={h} className="rounded bg-green-500/10 px-2 py-0.5 text-[10px] font-mono text-green-400">{h}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {!alert.resolved && (
+            <button
+              onClick={() => onFix(tenantId, alert.id)}
+              disabled={fixing}
+              className="mt-1 flex items-center gap-2 rounded-lg bg-brand-500/15 px-4 py-2 text-xs font-semibold text-brand-400 transition hover:bg-brand-500/25 disabled:opacity-50"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              {fixing ? "Headers worden toegevoegd..." : "Fix via Plugin — Headers toevoegen aan .htaccess"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* SSL Detail */}
+      {checkType === "ssl" && details && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {details.valid !== undefined && (
+              <div><span className="text-white/30">Geldig:</span> <span className={details.valid ? "text-green-400" : "text-red-400"}>{details.valid ? "Ja" : "Nee"}</span></div>
+            )}
+            {details.days_until_expiry !== undefined && (
+              <div><span className="text-white/30">Verloopt over:</span> <span className={details.days_until_expiry < 14 ? "text-red-400 font-bold" : details.days_until_expiry < 30 ? "text-yellow-400" : "text-green-400"}>{details.days_until_expiry} dagen</span></div>
+            )}
+            {details.issuer && (
+              <div><span className="text-white/30">Uitgever:</span> <span className="text-white/60">{details.issuer}</span></div>
+            )}
+            {details.subject && (
+              <div><span className="text-white/30">Domein:</span> <span className="text-white/60">{details.subject}</span></div>
+            )}
+            {details.expires && (
+              <div><span className="text-white/30">Vervaldatum:</span> <span className="text-white/60">{new Date(details.expires).toLocaleDateString("nl-BE")}</span></div>
+            )}
+          </div>
+          {details.san && details.san.length > 0 && (
+            <div>
+              <p className="text-[10px] text-white/30 font-medium mb-1">SAN domeinen:</p>
+              <div className="flex flex-wrap gap-1">
+                {details.san.map((d: string) => (
+                  <span key={d} className="rounded bg-white/5 px-2 py-0.5 text-[10px] font-mono text-white/50">{d}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Uptime Detail */}
+      {checkType === "uptime" && details && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {details.status_code && (
+            <div><span className="text-white/30">Status code:</span> <span className={details.status_code < 400 ? "text-green-400" : "text-red-400"}>{details.status_code}</span></div>
+          )}
+          {details.response_time_ms && (
+            <div><span className="text-white/30">Responstijd:</span> <span className="text-white/60">{details.response_time_ms}ms</span></div>
+          )}
+        </div>
+      )}
+
+      {/* DNS Detail */}
+      {checkType === "dns" && details && (
+        <div className="space-y-1 text-xs">
+          {details.hostname && <div><span className="text-white/30">Hostname:</span> <span className="text-white/60">{details.hostname}</span></div>}
+          {details.ips && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {details.ips.map((ip: string) => (
+                <span key={ip} className="rounded bg-white/5 px-2 py-0.5 text-[10px] font-mono text-white/50">{ip}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Generic fallback for unknown types */}
+      {!["security_headers", "ssl", "uptime", "dns"].includes(checkType) && details && (
+        <pre className="rounded-lg bg-white/[0.03] p-3 text-[10px] text-white/40 overflow-x-auto max-h-40">
+          {JSON.stringify(details, null, 2)}
+        </pre>
+      )}
+
+      {/* Raw message if no parsed details */}
+      {!details && alert.message && (
+        <div className="rounded-lg bg-white/[0.03] p-3">
+          <p className="text-[11px] text-white/40 whitespace-pre-wrap break-all">{alert.message}</p>
+        </div>
+      )}
     </div>
   );
 }

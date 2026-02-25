@@ -2,6 +2,7 @@
 Portal Auth — Email+Password login + SSO from WHMCS Client Area.
 Allows clients to login with email/password or auto-login from WHMCS.
 """
+from __future__ import annotations
 import hashlib
 import hmac
 import time
@@ -9,6 +10,7 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone
+from typing import Dict
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # In-memory reset tokens (production: use Redis or DB)
-_reset_tokens: dict[str, dict] = {}
+_reset_tokens: Dict[str, dict] = {}
 
 router = APIRouter(prefix="/api/portal", tags=["portal-auth"])
 

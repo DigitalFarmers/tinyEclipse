@@ -1,5 +1,6 @@
 """Source management and ingestion endpoints."""
 import uuid
+from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -26,19 +27,19 @@ router = APIRouter(
 class SourceCreate(BaseModel):
     tenant_id: str
     type: str = "url"
-    url: str | None = None
+    url: Optional[str] = None
     title: str
-    content: str | None = None
+    content: Optional[str] = None
 
 
 class SourceResponse(BaseModel):
     id: str
     tenant_id: str
     type: str
-    url: str | None
+    url: Optional[str]
     title: str
     status: str
-    last_indexed_at: str | None
+    last_indexed_at: Optional[str]
     created_at: str
 
 

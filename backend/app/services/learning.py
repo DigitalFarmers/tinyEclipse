@@ -8,6 +8,7 @@ Automatically learns from conversations:
 import uuid
 import logging
 from datetime import datetime, timezone
+from typing import Optional, List
 
 from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +28,7 @@ MIN_MESSAGES_FOR_SUMMARY = 4
 MAX_QA_CACHE_PER_CONV = 3
 
 
-async def summarize_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> dict | None:
+async def summarize_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Optional[dict]:
     """Generate a summary of a conversation and store it.
 
     Returns summary dict or None if conversation is too short.
@@ -186,9 +187,12 @@ async def cache_qa_pairs(db: AsyncSession, conversation_id: uuid.UUID) -> int:
 
 async def track_knowledge_gaps(db: AsyncSession, conversation_id: uuid.UUID) -> list[dict]:
     """Identify questions the AI couldn't answer well (low confidence / escalated).
+    Persists gaps in the knowledge_gaps table for admin action.
 
     Returns list of knowledge gap items.
     """
+    from app.services.brain import persist_knowledge_gap
+
     conv = await db.get(Conversation, conversation_id)
     if not conv:
         return []
@@ -209,6 +213,19 @@ async def track_knowledge_gaps(db: AsyncSession, conversation_id: uuid.UUID) -> 
             if messages[j].role == MessageRole.assistant:
                 answer = messages[j]
                 if answer.escalated or (answer.confidence and answer.confidence < 0.4):
+                    # Persist gap in DB
+                    try:
+                        await persist_knowledge_gap(
+                            db=db,
+                            tenant_id=conv.tenant_id,
+                            question=msg.content,
+                            confidence=answer.confidence or 0,
+                            escalated=answer.escalated or False,
+                            conversation_id=conversation_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"[learning] Failed to persist gap: {e}")
+
                     gaps.append({
                         "question": msg.content,
                         "confidence": answer.confidence or 0,
@@ -311,7 +328,7 @@ async def process_stale_conversations(db: AsyncSession, inactive_minutes: int = 
     return results
 
 
-def _extract_topics(user_messages: list[str]) -> list[str]:
+def _extract_topics(user_messages: List[str]) -> List[str]:
     """Extract key topics from user messages using simple heuristics."""
     topics = set()
     keywords = {
