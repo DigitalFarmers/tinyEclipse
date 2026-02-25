@@ -50,3 +50,7 @@ class Tenant(Base):
     conversations = relationship("Conversation", back_populates="tenant", lazy="selectin")
     consents = relationship("Consent", back_populates="tenant", lazy="selectin")
     site_modules = relationship("SiteModule", back_populates="tenant", lazy="selectin")
+    commands = relationship("CommandQueue", back_populates="tenant", lazy="selectin")
+    push_subscriptions = relationship("PushSubscription", back_populates="tenant", lazy="selectin")
+    alert_rules = relationship("AlertRule", back_populates="tenant", lazy="selectin")
+    proactive_alerts = relationship("ProactiveAlert", back_populates="tenant", lazy="selectin")

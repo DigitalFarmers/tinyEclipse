@@ -94,6 +94,22 @@ except Exception as e:
 app.include_router(insights_admin)
 app.include_router(insights_portal)
 
+# New feature routers — lazy loaded to avoid crashing the whole app
+_new_routers = [
+    "portal_data", "server", "commands", "push_notifications",
+    "alerts", "ecosystem", "brain", "registry", "hardening",
+    "portfolio", "bulk_actions", "portal_commands", "sync", "intelligence",
+]
+for _rname in _new_routers:
+    try:
+        _mod = __import__(f"app.routers.{_rname}", fromlist=["router"])
+        if hasattr(_mod, "router"):
+            app.include_router(_mod.router)
+        if hasattr(_mod, "public_router"):
+            app.include_router(_mod.public_router)
+    except Exception as _e:
+        logging.getLogger(__name__).warning(f"Router {_rname} skipped: {_e}")
+
 # Serve widget static files
 try:
     app.mount("/widget/v1", StaticFiles(directory="static/widget/v1"), name="widget")
