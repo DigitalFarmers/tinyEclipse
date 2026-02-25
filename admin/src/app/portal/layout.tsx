@@ -39,6 +39,7 @@ import {
   Users,
   Languages,
   Wheat,
+  Brain,
 } from "lucide-react";
 import type { PlanFeatures } from "@/lib/usePortalSession";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
@@ -274,6 +275,7 @@ function buildNavSections(features: PortalFeatures | null): NavSection[] {
       { href: "/portal", label: "Overzicht", icon: LayoutDashboard },
       { href: "/portal/events", label: "Activiteit", icon: Activity },
       { href: "/portal/ai", label: "AI Assistent", icon: Bot },
+      { href: "/portal/self-learning", label: "Zelflerend AI", icon: Brain },
       { href: "/portal/monitoring", label: "Monitoring", icon: Shield },
     ],
   });

@@ -100,6 +100,7 @@ _new_routers = [
     "alerts", "ecosystem", "brain", "registry", "hardening",
     "portfolio", "bulk_actions", "portal_commands", "sync", "intelligence",
     "product_intelligence",
+    "self_learning",
 ]
 for _rname in _new_routers:
     try:
