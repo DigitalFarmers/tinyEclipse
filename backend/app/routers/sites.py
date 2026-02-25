@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy.orm import noload
+
 from app.database import get_db
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, PlanType, TenantStatus
@@ -91,7 +93,10 @@ async def get_widget_config(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Mother Brain — central live config for all deployed widgets.
     The widget fetches this on every boot. Changes here = instant effect on all bots.
     No auth needed — called by the widget JS from any site."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    result = await db.execute(
+        select(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).options(noload("*"))
+    )
+    tenant = result.scalar_one_or_none()
     if not tenant or tenant.status != TenantStatus.active:
         raise HTTPException(status_code=404, detail="Site not found or inactive")
 
@@ -172,7 +177,8 @@ async def get_plugin_version():
 @public_router.get("/verify/{tenant_id}")
 async def verify_site(tenant_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Verify a site is properly connected to Eclipse. Called by plugins on activation."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    result = await db.execute(select(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).options(noload("*")))
+    tenant = result.scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
@@ -554,7 +560,8 @@ async def sites_overview(db: AsyncSession = Depends(get_db)):
 @admin_router.post("/{tenant_id}/deactivate")
 async def deactivate_site(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Deactivate a site — widget stops working, monitoring pauses."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    r = await db.execute(select(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).options(noload("*")))
+    tenant = r.scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
@@ -580,7 +587,8 @@ async def deactivate_site(tenant_id: str, db: AsyncSession = Depends(get_db)):
 @admin_router.post("/{tenant_id}/reactivate")
 async def reactivate_site(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Reactivate a suspended site."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    r = await db.execute(select(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).options(noload("*")))
+    tenant = r.scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
