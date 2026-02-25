@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.database import get_db
 from app.config import get_settings
@@ -152,7 +153,8 @@ async def verify_portal_token(
     if not hmac.compare_digest(sig, expected):
         raise HTTPException(status_code=403, detail="Ongeldig token.")
 
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+    r = await db.execute(select(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).options(noload("*")))
+    tenant = r.scalar_one_or_none()
     if not tenant or tenant.status != TenantStatus.active:
         raise HTTPException(status_code=404, detail="Account niet gevonden of gedeactiveerd.")
 
@@ -392,7 +394,8 @@ async def reset_password(
         del _reset_tokens[body.token]
         raise HTTPException(status_code=400, detail="Reset-link is verlopen. Vraag een nieuwe aan.")
 
-    client = await db.get(ClientAccount, token_data["client_id"])
+    r = await db.execute(select(ClientAccount).where(ClientAccount.id == token_data["client_id"]).options(noload("*")))
+    client = r.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Account niet gevonden.")
 
