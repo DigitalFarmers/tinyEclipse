@@ -18,19 +18,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Deduplication columns
-    op.add_column('alerts', sa.Column('dedup_key', sa.String(64), nullable=True))
-    op.add_column('alerts', sa.Column('occurrence_count', sa.Integer(), nullable=False, server_default='1'))
-    op.add_column('alerts', sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=True))
-
-    # AI Classification columns
-    op.add_column('alerts', sa.Column('classification', sa.String(20), nullable=True))
-    op.add_column('alerts', sa.Column('priority_score', sa.Integer(), nullable=True))
-    op.add_column('alerts', sa.Column('auto_fix_status', sa.String(20), nullable=True))
-    op.add_column('alerts', sa.Column('resolved_by', sa.String(50), nullable=True))
+    # Use raw SQL for idempotent column adds (some may already exist from migration 015)
+    cols = [
+        ("dedup_key", "VARCHAR(64)"),
+        ("occurrence_count", "INTEGER NOT NULL DEFAULT 1"),
+        ("last_seen_at", "TIMESTAMPTZ"),
+        ("classification", "VARCHAR(20)"),
+        ("priority_score", "INTEGER"),
+        ("auto_fix_status", "VARCHAR(20)"),
+        ("resolved_by", "VARCHAR(50)"),
+    ]
+    for col_name, col_type in cols:
+        op.execute(f"ALTER TABLE alerts ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
     # Index for dedup lookups
-    op.create_index('ix_alerts_dedup_key', 'alerts', ['dedup_key'])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_alerts_dedup_key ON alerts (dedup_key)")
 
 
 def downgrade() -> None:
