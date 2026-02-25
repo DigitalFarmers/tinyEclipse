@@ -38,6 +38,7 @@ import {
   ChevronDown,
   Users,
   Languages,
+  Wheat,
 } from "lucide-react";
 import type { PlanFeatures } from "@/lib/usePortalSession";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
@@ -285,6 +286,7 @@ function buildNavSections(features: PortalFeatures | null): NavSection[] {
   // Mijn Aanbod (dynamic based on active modules)
   const offeringItems: NavItem[] = [];
   if (hasBlock("products")) offeringItems.push({ href: "/portal/products", label: "Producten", icon: Package });
+  if (hasBlock("products")) offeringItems.push({ href: "/portal/product-intelligence", label: "Product Intel", icon: Wheat });
   if (hasBlock("services")) offeringItems.push({ href: "/portal/services", label: "Diensten", icon: Wrench });
   if (hasBlock("rentals")) offeringItems.push({ href: "/portal/rentals", label: "Verhuur", icon: Key });
   if (hasBlock("bookings")) offeringItems.push({ href: "/portal/bookings", label: "Boekingen", icon: CalendarDays });

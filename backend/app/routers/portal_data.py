@@ -515,3 +515,22 @@ async def get_intelligence_pages(tenant_id: str, db: AsyncSession = Depends(get_
 async def get_intelligence_translations(tenant_id: str, db: AsyncSession = Depends(get_db)):
     t = await _tenant(tenant_id, db)
     return await _get(t, "/site-intelligence/translations")
+
+
+# ═══════════════════════════════════════════════════════════════
+# PRODUCT INTELLIGENCE
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/{tenant_id}/product-intelligence")
+async def portal_product_intelligence(
+    tenant_id: str,
+    limit: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """Product intelligence for portal users (shop admins)."""
+    t = await _tenant(tenant_id, db)
+    from app.services.product_intelligence import analyze_products
+    result = await analyze_products(t.domain, str(t.id), limit=limit)
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=result.get("detail", "Failed to fetch products"))
+    return result

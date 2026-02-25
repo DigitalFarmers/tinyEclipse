@@ -99,6 +99,7 @@ _new_routers = [
     "portal_data", "server", "commands", "push_notifications",
     "alerts", "ecosystem", "brain", "registry", "hardening",
     "portfolio", "bulk_actions", "portal_commands", "sync", "intelligence",
+    "product_intelligence",
 ]
 for _rname in _new_routers:
     try:

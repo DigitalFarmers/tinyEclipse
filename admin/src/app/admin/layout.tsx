@@ -33,6 +33,7 @@ import {
   ArrowLeftRight,
   Globe,
   Cpu,
+  Wheat,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { getTenants, getAlerts, getOverview } from "@/lib/api";
@@ -162,6 +163,7 @@ function Sidebar({ open, onClose, alertCount, chatCount, apiOk }: { open: boolea
       title: "Intelligence",
       items: [
         { href: "/admin/mother-brain", label: "Mother Brain", icon: Cpu, badge: 0 },
+        { href: "/admin/product-intelligence", label: "Product Intel", icon: Wheat, badge: 0 },
         { href: "/admin/brain", label: "AI Brain", icon: Brain, badge: 0 },
         { href: "/admin/insights", label: "AI Insights", icon: Brain, badge: 0 },
         { href: "/admin/analytics", label: "Deep Analytics", icon: BarChart3, badge: 0 },
