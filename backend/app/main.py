@@ -10,7 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from app.config import get_settings
 from app.middleware.rate_limit import limiter
 import app.models  # noqa: F401 — ensure ALL models are registered before routers load
-from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles, portal_account, portal_conversations, wp_proxy, leads, contacts, calibration, portal_data, server, commands, push_notifications, alerts, ecosystem, brain, registry, hardening, portfolio, bulk_actions, portal_commands
+from app.routers import chat, consent, tenants, sources, admin, monitoring, tracking, reports, webhooks, system, whmcs, portal_auth, events, portal_features, portal_projects, mail, module_events, portal_unified, client_profiles, portal_account, portal_conversations, wp_proxy, leads, contacts, calibration
 from app.routers.insights import admin_router as insights_admin, portal_router as insights_portal
 from app.routers.heartbeat import public_router as heartbeat_public, admin_router as heartbeat_admin
 from app.routers.sites import public_router as sites_public, admin_router as sites_admin
@@ -83,13 +83,6 @@ app.include_router(leads.public_router)
 app.include_router(leads.admin_router)
 app.include_router(contacts.router)
 app.include_router(calibration.router)
-app.include_router(portal_data.router)
-app.include_router(server.router)
-app.include_router(commands.router)
-app.include_router(commands.public_router)
-app.include_router(push_notifications.router)
-app.include_router(alerts.router)
-app.include_router(ecosystem.router)
 # Change requests - lazy import to avoid model registration issues
 try:
     from app.routers.change_requests import portal_router as cr_portal, admin_router as cr_admin
@@ -98,14 +91,8 @@ try:
 except Exception as e:
     import logging as _lg
     _lg.getLogger(__name__).warning(f"change_requests router failed to load: {e}")
-app.include_router(brain.router)
-app.include_router(registry.router)
-app.include_router(hardening.router)
-app.include_router(portfolio.router)
-app.include_router(bulk_actions.router)
 app.include_router(insights_admin)
 app.include_router(insights_portal)
-app.include_router(portal_commands.router)
 
 # Serve widget static files
 try:
