@@ -2,6 +2,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_API_URL=https://api.tinyeclipse.digitalfarmers.be
+ARG NEXT_PUBLIC_ADMIN_KEY=te-admin-bN5cF8hJ3kM6pS9u
+
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_ADMIN_KEY=$NEXT_PUBLIC_ADMIN_KEY
+
 COPY package.json package-lock.json* ./
 RUN npm install
 
