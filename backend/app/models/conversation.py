@@ -40,4 +40,4 @@ class Conversation(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="conversations")
-    messages = relationship("Message", back_populates="conversation", lazy="selectin", order_by="Message.created_at")
+    messages = relationship("Message", back_populates="conversation", lazy="select", order_by="Message.created_at")

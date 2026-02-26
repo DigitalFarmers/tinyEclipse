@@ -52,7 +52,7 @@ class SyncGroup(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    members = relationship("SyncMember", back_populates="group", lazy="selectin")
+    members = relationship("SyncMember", back_populates="group", lazy="select")
     logs = relationship("SyncLog", back_populates="group", lazy="dynamic", order_by="SyncLog.created_at.desc()")
 
 
