@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Shield, ShieldCheck, ShieldAlert, RefreshCw, Play, Clock, Globe, Lock, Gauge, Server } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Shield, ShieldCheck, ShieldAlert, RefreshCw, Play, Clock, Globe, Lock, Gauge, Server, Bell } from "lucide-react";
 import { getTenants, getMonitoringDashboard, runMonitoringChecks, setupMonitoring } from "@/lib/api";
+
+const DFGuardContent = dynamic(() => import("../dfguard/page"), { ssr: false });
+const AlertsContent = dynamic(() => import("../alerts/page"), { ssr: false });
 
 interface Tenant { id: string; name: string; domain: string; plan: string; }
 interface Check { id: string; type: string; status: string; last_checked_at: string | null; response_time_ms: number | null; }
@@ -12,7 +16,14 @@ interface MonitorData { overall_status: string; stats: { total_checks: number; o
 
 const CHECK_ICONS: Record<string, any> = { uptime: Globe, ssl: Lock, performance: Gauge, dns: Server };
 
+const monitorTabs = [
+  { id: "uptime" as const, label: "Uptime & SSL", icon: Shield },
+  { id: "dfguard" as const, label: "DFGuard", icon: Shield },
+  { id: "alerts" as const, label: "Alerts", icon: Bell },
+];
+
 export default function MonitoringPage() {
+  const [activeTab, setActiveTab] = useState<"uptime" | "dfguard" | "alerts">("uptime");
   const searchParams = useSearchParams();
   const preselected = searchParams.get("tenant");
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -42,15 +53,26 @@ export default function MonitoringPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold tracking-tight">Monitoring</h1><p className="mt-0.5 text-sm text-white/40">24/7 uptime, SSL, performance & DNS</p></div>
-        <div className="flex items-center gap-3">
-          <select value={selectedTenant} onChange={(e) => setSelectedTenant(e.target.value)} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 outline-none">
-            {tenants.map((t) => <option key={t.id} value={t.id} className="bg-brand-950">{t.name}</option>)}
-          </select>
-          <button onClick={handleRunAll} disabled={running || !selectedTenant} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium transition hover:bg-brand-500 disabled:opacity-50">
-            {running ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Run All
+        <div><h1 className="text-2xl font-bold tracking-tight">Monitoring</h1><p className="mt-0.5 text-sm text-white/40">Uptime, beveiliging, alerts & DFGuard</p></div>
+      </div>
+
+      <div className="mt-4 mb-6 flex gap-1 rounded-xl bg-white/5 p-1">
+        {monitorTabs.map((tab) => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${activeTab === tab.id ? "bg-brand-500/20 text-white" : "text-white/40 hover:text-white/70"}`}>
+            <tab.icon className="h-4 w-4" />{tab.label}
           </button>
-        </div>
+        ))}
+      </div>
+
+      {activeTab === "dfguard" ? <DFGuardContent /> : activeTab === "alerts" ? <AlertsContent /> : <>
+      <div className="flex items-center justify-end gap-3 mb-4">
+        <select value={selectedTenant} onChange={(e) => setSelectedTenant(e.target.value)} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 outline-none">
+          {tenants.map((t) => <option key={t.id} value={t.id} className="bg-brand-950">{t.name}</option>)}
+        </select>
+        <button onClick={handleRunAll} disabled={running || !selectedTenant} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium transition hover:bg-brand-500 disabled:opacity-50">
+          {running ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Run All
+        </button>
       </div>
 
       {loading ? (
@@ -105,6 +127,7 @@ export default function MonitoringPage() {
           )}
         </>
       )}
+      </>}
     </div>
   );
 }

@@ -5,35 +5,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Building2,
   MessageSquare,
   Database,
   BarChart3,
   Shield,
   Users,
-  Activity,
-  Bell,
   Zap,
   LogOut,
-  Eye,
   Brain,
   Menu,
   X,
   ShoppingCart,
-  UserPlus,
-  Contact,
-  Terminal,
-  Gauge,
-  FileEdit,
   Server,
-  Key,
-  Mail,
-  Image,
-  Package,
-  ArrowLeftRight,
   Globe,
   Cpu,
-  Wheat,
+  HeartPulse,
+  Wrench,
+  CreditCard,
+  BookOpen,
 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { getTenants, getAlerts, getOverview } from "@/lib/api";
@@ -114,8 +103,8 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
       </button>
       <div className="hidden lg:block" />
       <div className="flex items-center gap-3">
-        <Link href="/admin/alerts" className="relative rounded-lg p-2 text-white/40 transition hover:bg-white/5 hover:text-white">
-          <Bell className="h-4 w-4" />
+        <Link href="/admin/monitoring" className="relative rounded-lg p-2 text-white/40 transition hover:bg-white/5 hover:text-white">
+          <Shield className="h-4 w-4" />
         </Link>
         <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5">
           <div className="h-6 w-6 rounded-full bg-gradient-to-br from-brand-500 to-purple-600" />
@@ -148,51 +137,27 @@ function Sidebar({ open, onClose, alertCount, chatCount, apiOk }: { open: boolea
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
         { href: "/admin/portfolio", label: "Portfolio", icon: Globe, badge: 0 },
         { href: "/admin/clients", label: "Klanten", icon: Users, badge: 0 },
-        { href: "/admin/tenants", label: "Websites", icon: Building2, badge: 0 },
-        { href: "/admin/monitoring", label: "Monitoring", icon: Shield, badge: 0 },
         { href: "/admin/site-manager", label: "Site Manager", icon: ShoppingCart, badge: 0 },
-        { href: "/admin/commander", label: "Commander", icon: Terminal, badge: 0 },
-        { href: "/admin/superview", label: "Superview", icon: Eye, badge: 0 },
+        { href: "/admin/monitoring", label: "Monitoring", icon: Shield, badge: alertCount },
         { href: "/admin/server", label: "Server", icon: Server, badge: 0 },
-        { href: "/admin/dfguard", label: "DFGuard", icon: Shield, badge: 0 },
-        { href: "/admin/commands", label: "Commands", icon: Terminal, badge: 0 },
-        { href: "/admin/content", label: "Content", icon: FileEdit, badge: 0 },
       ],
     },
     {
       title: "Intelligence",
       items: [
         { href: "/admin/mother-brain", label: "Mother Brain", icon: Cpu, badge: 0 },
-        { href: "/admin/product-intelligence", label: "Product Intel", icon: Wheat, badge: 0 },
         { href: "/admin/brain", label: "AI Brain", icon: Brain, badge: 0 },
-        { href: "/admin/insights", label: "AI Insights", icon: Brain, badge: 0 },
-        { href: "/admin/analytics", label: "Deep Analytics", icon: BarChart3, badge: 0 },
-        { href: "/admin/insights/cross-site", label: "Cross-Site AI", icon: Brain, badge: 0 },
-        { href: "/admin/conversations", label: "Conversations", icon: MessageSquare, badge: chatCount },
-        { href: "/admin/leads", label: "Leads", icon: UserPlus, badge: 0 },
-        { href: "/admin/contacts", label: "Contacts", icon: Contact, badge: 0 },
-        { href: "/admin/calibration", label: "Calibratie", icon: Gauge, badge: 0 },
-        { href: "/admin/sources", label: "Knowledge Base", icon: Database, badge: 0 },
-        { href: "/admin/sync", label: "Cross-Site Sync", icon: ArrowLeftRight, badge: 0 },
-      ],
-    },
-    {
-      title: "Tooling",
-      items: [
-        { href: "/admin/apikeys", label: "API Keys", icon: Key, badge: 0 },
-        { href: "/admin/updater", label: "Plugin Updater", icon: Package, badge: 0 },
-        { href: "/admin/digest", label: "Email Digest", icon: Mail, badge: 0 },
-        { href: "/admin/compressor", label: "Compressor", icon: Image, badge: 0 },
+        { href: "/admin/knowledge", label: "Knowledge", icon: BookOpen, badge: 0 },
+        { href: "/admin/crm", label: "CRM", icon: MessageSquare, badge: chatCount },
+        { href: "/admin/analytics", label: "Analytics", icon: BarChart3, badge: 0 },
       ],
     },
     {
       title: "Operations",
       items: [
-        { href: "/admin/registry", label: "Tech Registry", icon: Activity, badge: 0 },
-        { href: "/admin/hardening", label: "Hardening", icon: Shield, badge: 0 },
-        { href: "/admin/requests", label: "Verzoeken", icon: FileEdit, badge: 0 },
-        { href: "/admin/usage", label: "Usage & Billing", icon: BarChart3, badge: 0 },
-        { href: "/admin/alerts", label: "Alerts", icon: Bell, badge: alertCount },
+        { href: "/admin/system-health", label: "System Health", icon: HeartPulse, badge: 0 },
+        { href: "/admin/toolbox", label: "Toolbox", icon: Wrench, badge: 0 },
+        { href: "/admin/usage", label: "Billing", icon: CreditCard, badge: 0 },
       ],
     },
   ];
