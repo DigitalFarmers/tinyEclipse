@@ -634,3 +634,11 @@ export async function triggerBulkGapResolve(clientAccountId: string, category: s
     body: JSON.stringify({ client_account_id: clientAccountId, category, answer }),
   });
 }
+
+export async function checkAllWidgets() {
+  return apiFetch(`/api/admin/monitoring/widget-check`);
+}
+
+export async function checkWidgetForTenant(tenantId: string) {
+  return apiFetch(`/api/admin/monitoring/widget-check/${tenantId}`);
+}

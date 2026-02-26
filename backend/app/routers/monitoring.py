@@ -401,3 +401,24 @@ async def setup_monitoring(tenant_id: str, db: AsyncSession = Depends(get_db)):
 
     await setup_default_checks(db, tenant.id, tenant.domain)
     return {"status": "monitoring configured", "domain": tenant.domain}
+
+
+# ─── Widget Self-Detection ───
+
+@router.get("/widget-check")
+async def check_all_widgets_endpoint(
+    db: AsyncSession = Depends(get_db),
+):
+    """Check widget installation status across ALL active tenants with domains."""
+    from app.services.widget_detection import check_all_widgets
+    return await check_all_widgets(db)
+
+
+@router.get("/widget-check/{tenant_id}")
+async def check_widget_for_tenant(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Check widget installation for a single tenant."""
+    from app.services.widget_detection import check_all_widgets
+    return await check_all_widgets(db, tenant_ids=[tenant_id])
