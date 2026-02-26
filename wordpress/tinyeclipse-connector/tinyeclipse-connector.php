@@ -16,6 +16,34 @@
 if (!defined('ABSPATH')) exit;
 
 // ═══════════════════════════════════════════════════════════════
+// COMPATIBILITY SHIMS — Ensure core WP functions are available
+// ═══════════════════════════════════════════════════════════════
+
+if (!function_exists('wp_generate_uuid')) {
+    function wp_generate_uuid() {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+    }
+}
+
+if (!function_exists('wp_timezone_string')) {
+    function wp_timezone_string() {
+        $timezone_string = get_option('timezone_string');
+        if ($timezone_string) return $timezone_string;
+        $offset = (float) get_option('gmt_offset', 0);
+        $hours = (int) $offset;
+        $minutes = ($offset - $hours) * 60;
+        return sprintf('%+03d:%02d', $hours, abs($minutes));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 
