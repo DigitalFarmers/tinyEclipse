@@ -13,6 +13,7 @@ from sqlalchemy import select, func, and_, case, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, PlanType
 from app.models.monitor import MonitorCheck, MonitorResult, Alert, CheckType, CheckStatus, AlertSeverity
@@ -100,9 +101,7 @@ async def site_health_report(
 ):
     """Comprehensive site health report — the core PRO+ deliverable."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     # Monitoring checks
     checks_result = await db.execute(
@@ -253,9 +252,7 @@ async def periodic_report(
 ):
     """Weekly or monthly report — monitoring + analytics + AI usage combined."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     days = 7 if period == "week" else 30
     since = datetime.now(timezone.utc) - timedelta(days=days)

@@ -34,7 +34,7 @@ async def summarize_conversation(db: AsyncSession, conversation_id: uuid.UUID) -
     Returns summary dict or None if conversation is too short.
     """
     from app.services.llm import generate_response
-    from app.models.tenant import Tenant
+    from app.helpers import get_tenant_safe
 
     conv = await db.get(Conversation, conversation_id)
     if not conv:
@@ -52,8 +52,11 @@ async def summarize_conversation(db: AsyncSession, conversation_id: uuid.UUID) -
     if len(messages) < MIN_MESSAGES_FOR_SUMMARY:
         return None
 
-    tenant = await db.get(Tenant, conv.tenant_id)
-    tenant_name = tenant.name if tenant else "het bedrijf"
+    try:
+        tenant = await get_tenant_safe(db, str(conv.tenant_id))
+        tenant_name = tenant.name
+    except Exception:
+        tenant_name = "het bedrijf"
 
     # Build conversation text for summarization
     conv_text = "\n".join([

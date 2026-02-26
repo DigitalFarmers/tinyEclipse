@@ -11,6 +11,7 @@ from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 from app.models.source import Source, SourceType, SourceStatus
 from app.models.conversation import Conversation
@@ -23,10 +24,7 @@ router = APIRouter(prefix="/api/portal/self-learning", tags=["portal-self-learni
 
 
 async def _tenant(tenant_id: str, db: AsyncSession) -> Tenant:
-    t = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not t:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return t
+    return await get_tenant_safe(db, tenant_id)
 
 
 @router.get("/{tenant_id}")

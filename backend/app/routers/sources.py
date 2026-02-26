@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, async_session
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.source import Source, SourceType, SourceStatus
 from app.models.tenant import Tenant
@@ -79,9 +80,7 @@ async def create_source(
     """Create a new source for a tenant."""
     tenant_uuid = uuid.UUID(body.tenant_id)
 
-    tenant = await db.get(Tenant, tenant_uuid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
 
     source = Source(
         id=uuid.uuid4(),
@@ -167,10 +166,7 @@ async def scrape_site(
     db: AsyncSession = Depends(get_db),
 ):
     """Scrape an entire site (via sitemap) and create sources for each page."""
-    tenant_uuid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tenant_uuid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     urls = await scrape_sitemap(url)
     if not urls:

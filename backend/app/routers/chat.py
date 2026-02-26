@@ -21,6 +21,7 @@ except ImportError:
     parse_ua = None
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.rate_limit import limiter
 from app.models.consent import Consent
 from app.models.conversation import Conversation, ConversationStatus
@@ -207,9 +208,7 @@ async def chat(
     tenant_uuid = uuid.UUID(body.tenant_id)
 
     # ─── [1] INPUT: Validate tenant ───
-    tenant = await db.get(Tenant, tenant_uuid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id, require_active=True)
     if tenant.status != TenantStatus.active:
         raise HTTPException(status_code=403, detail="Tenant is suspended")
 

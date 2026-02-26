@@ -10,6 +10,7 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.lead import Lead, LeadSource
 from app.models.tenant import Tenant
@@ -51,9 +52,7 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant_id")
 
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
 
     source = LeadSource.chat
     if body.source == "exit_intent":

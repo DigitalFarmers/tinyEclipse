@@ -13,6 +13,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.visitor import VisitorSession, PageView, VisitorEvent, EventType
 from app.models.tenant import Tenant
 
@@ -78,9 +79,7 @@ class SessionEnd(BaseModel):
 @router.post("/session", status_code=201)
 async def start_session(body: SessionStart, request: Request, db: AsyncSession = Depends(get_db)):
     """Start a new visitor session."""
-    tenant = await db.get(Tenant, uuid.UUID(body.tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
 
     session = VisitorSession(
         id=uuid.uuid4(),

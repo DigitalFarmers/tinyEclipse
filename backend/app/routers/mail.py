@@ -13,6 +13,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
 from app.services.directadmin import get_domain_mail_summary, check_mail_health
@@ -29,9 +30,7 @@ async def get_tenant_mail(
 ):
     """Get mail overview for a tenant's domain via DirectAdmin."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant or not tenant.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain set")
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
 
     summary = await get_domain_mail_summary(tenant.domain)
 
@@ -71,9 +70,7 @@ async def activate_mail_module(
 ):
     """Activate mail module for a tenant — fetches mailboxes from DirectAdmin and creates SiteModule."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant or not tenant.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain set")
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
 
     # Check if already exists
     result = await db.execute(
@@ -123,9 +120,7 @@ async def get_mail_health(
 ):
     """Check mail health for a tenant's domain (MX records, SMTP)."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant or not tenant.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain set")
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
 
     health = await check_mail_health(tenant.domain)
     return {

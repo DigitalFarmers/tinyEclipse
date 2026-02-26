@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.tenant import Tenant
+from app.helpers import get_tenant_safe
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ async def enrich_tenant_geo(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     Full geo enrichment for a tenant. Gathers location data from the site
     and builds a rich geo context that the AI can use.
     """
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
+    try:
+        tenant = await get_tenant_safe(db, str(tenant_id))
+    except Exception:
         return {"error": "Tenant not found"}
 
     geo = dict(tenant.geo_context) if tenant.geo_context else {}

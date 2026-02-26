@@ -527,7 +527,11 @@ async def execute_check_and_store(db: AsyncSession, check: MonitorCheck) -> Moni
             # Push notification via webhooks — only for NEW alerts
             try:
                 from app.routers.webhooks import dispatch_event
-                tenant = await db.get(Tenant, check.tenant_id) if hasattr(db, 'get') else None
+                from app.helpers import get_tenant_safe
+                try:
+                    tenant = await get_tenant_safe(db, str(check.tenant_id))
+                except Exception:
+                    tenant = None
                 await dispatch_event(
                     event="alert.created",
                     tenant_id=str(check.tenant_id),

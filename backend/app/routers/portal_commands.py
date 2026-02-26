@@ -17,6 +17,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.config import get_settings
 from app.models.tenant import Tenant, TenantStatus
 from app.services.command_queue import (
@@ -90,9 +91,7 @@ async def get_available_commands(
     if not _verify_portal_token(tenant_id, token):
         raise HTTPException(status_code=403, detail="Invalid or expired token")
 
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant or tenant.status != TenantStatus.active:
-        raise HTTPException(status_code=404, detail="Site not found")
+    tenant = await get_tenant_safe(db, tenant_id, require_active=True)
 
     plan = tenant.plan.value
     commands = ALLOWED_COMMANDS.get(plan, ALLOWED_COMMANDS["tiny"])
@@ -135,9 +134,7 @@ async def execute_command(
     if not _verify_portal_token(body.tenant_id, body.token):
         raise HTTPException(status_code=403, detail="Invalid or expired token")
 
-    tenant = await db.get(Tenant, uuid.UUID(body.tenant_id))
-    if not tenant or tenant.status != TenantStatus.active:
-        raise HTTPException(status_code=404, detail="Site not found")
+    tenant = await get_tenant_safe(db, body.tenant_id, require_active=True)
 
     plan = tenant.plan.value
     allowed = ALLOWED_COMMANDS.get(plan, ALLOWED_COMMANDS["tiny"])

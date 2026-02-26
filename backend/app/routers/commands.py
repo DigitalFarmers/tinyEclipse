@@ -18,6 +18,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant
 from app.services.command_queue import (
@@ -77,9 +78,7 @@ async def queue_single_command(
         raise HTTPException(status_code=400, detail="Invalid tenant_id")
     
     # Verify tenant exists
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
     
     # Parse scheduled_at
     scheduled_at = None
@@ -310,9 +309,7 @@ async def poll_commands(
         raise HTTPException(status_code=400, detail="Invalid tenant_id")
     
     # Verify tenant exists
-    tenant = await db.get(Tenant, tenant_uuid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
     
     # Get pending commands
     commands = await get_pending_commands(

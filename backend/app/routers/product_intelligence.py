@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant
 from app.services.product_intelligence import analyze_products
@@ -25,11 +26,7 @@ router = APIRouter(
 
 
 async def _get_tenant(tenant_id: str, db: AsyncSession) -> Tenant:
-    tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant or not tenant.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain")
-    return tenant
+    return await get_tenant_safe(db, tenant_id, require_domain=True)
 
 
 @router.get("/{tenant_id}")

@@ -21,6 +21,7 @@ from groq import AsyncGroq
 
 from app.database import get_db
 from app.config import get_settings
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, PlanType, TenantStatus, TenantEnvironment
 from app.models.client_account import ClientAccount
@@ -279,9 +280,7 @@ async def admin_tenant_summary(
 ):
     """AI-generated summary for a specific tenant — for Mo."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     since, until = _period_range(period)
     stats = await _gather_tenant_stats(db, tenant, since, until)
@@ -304,9 +303,7 @@ async def admin_improvement_suggestions(
 ):
     """Detailed improvement suggestions for Mo to execute via Windsurf."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     since, until = _period_range("month")
     stats = await _gather_tenant_stats(db, tenant, since, until)
@@ -750,9 +747,7 @@ async def portal_tenant_summary(
 ):
     """Client-facing AI summary — what happened on their site."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     since, until = _period_range(period)
     stats = await _gather_tenant_stats(db, tenant, since, until)
@@ -784,9 +779,7 @@ async def portal_growth_tracker(
 ):
     """Growth tracker — show client how their site is growing over time."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     now = datetime.now(timezone.utc)
     periods = {

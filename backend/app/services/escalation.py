@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.message import Message, MessageRole
 from app.models.tenant import Tenant
+from app.helpers import get_tenant_safe
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -50,9 +51,13 @@ async def escalate_conversation(
     )
 
     # Gather context for notifications
-    tenant = await db.get(Tenant, conversation.tenant_id)
-    tenant_name = tenant.name if tenant else "Onbekend"
-    tenant_domain = tenant.domain if tenant else "onbekend"
+    try:
+        tenant = await get_tenant_safe(db, str(conversation.tenant_id))
+        tenant_name = tenant.name
+        tenant_domain = tenant.domain or "onbekend"
+    except Exception:
+        tenant_name = "Onbekend"
+        tenant_domain = "onbekend"
 
     # Get last few messages for context
     msgs_result = await db.execute(

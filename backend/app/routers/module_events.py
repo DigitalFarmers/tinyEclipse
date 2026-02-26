@@ -20,6 +20,7 @@ from sqlalchemy import select, desc, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 from app.models.module_event import ModuleEvent, ModuleEventType
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
@@ -74,9 +75,7 @@ async def report_module_event(
     No auth required — tenant_id acts as the key (same as chat endpoint).
     """
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     # Validate event type
     try:

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.consent import Consent
 from app.models.tenant import Tenant
 
@@ -36,9 +37,7 @@ async def record_consent(
     tenant_uuid = uuid.UUID(body.tenant_id)
 
     # Verify tenant exists
-    tenant = await db.get(Tenant, tenant_uuid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
 
     # Get client info
     ip_address = request.client.host if request.client else "unknown"

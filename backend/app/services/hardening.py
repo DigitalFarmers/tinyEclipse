@@ -15,6 +15,7 @@ from sqlalchemy import select, func, and_, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.tenant import Tenant
+from app.helpers import get_tenant_safe
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.source import Source, SourceStatus
@@ -46,8 +47,10 @@ async def run_security_audit(db: AsyncSession, tenant_id: Optional[uuid.UUID] = 
 
     # ── 1. High escalation rate check ──
     if tenant_id:
-        tenants = [(await db.get(Tenant, tenant_id))]
-        tenants = [t for t in tenants if t]
+        try:
+            tenants = [await get_tenant_safe(db, str(tenant_id))]
+        except Exception:
+            tenants = []
     else:
         result = await db.execute(select(Tenant).where(Tenant.active == True))
         tenants = result.scalars().all()
@@ -258,14 +261,16 @@ async def get_resource_overview(db: AsyncSession) -> dict:
     )
     top_tenants = []
     for row in tenant_usage_result.all():
-        t = await db.get(Tenant, row[0])
-        if t:
+        try:
+            t = await get_tenant_safe(db, str(row[0]))
             top_tenants.append({
                 "tenant_id": str(t.id),
                 "name": t.name,
                 "domain": t.domain,
                 "conversations_7d": row[1],
             })
+        except Exception:
+            pass
 
     return {
         "active_tenants": active_tenants,

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 from app.models.site_module import SiteModule, ModuleStatus
 from app.services.plan_limits import get_plan_features, get_plan_comparison
@@ -22,9 +23,7 @@ router = APIRouter(prefix="/api/portal/features", tags=["portal-features"])
 @router.get("/{tenant_id}")
 async def get_tenant_features(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Get the full feature set, sector profile, active modules, and hub config."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     features = get_plan_features(tenant.plan.value)
 
@@ -94,9 +93,7 @@ async def get_tenant_features(tenant_id: str, db: AsyncSession = Depends(get_db)
 @router.post("/{tenant_id}/analyze-sector")
 async def analyze_tenant_sector(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Run sector intelligence analysis and store results in tenant settings."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     # Get detected modules
     result = await db.execute(
@@ -132,9 +129,7 @@ async def analyze_tenant_sector(tenant_id: str, db: AsyncSession = Depends(get_d
 @router.post("/{tenant_id}/hub-config")
 async def update_hub_config(tenant_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Update Hub configuration (layout, shortcuts, branding) for Pro+ tenants."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     data = await request.json()
     settings = dict(tenant.settings) if tenant.settings else {}

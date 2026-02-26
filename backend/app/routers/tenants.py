@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, async_session
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, PlanType, TenantStatus, TenantEnvironment
 from app.models.client_account import ClientAccount
@@ -283,9 +284,7 @@ async def get_tenant(
     db: AsyncSession = Depends(get_db),
 ):
     """Get tenant details with usage stats."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     # Get conversation count
     conv_count_result = await db.execute(
@@ -404,9 +403,7 @@ async def rescrape_tenant(
     """Trigger a deep re-scrape of a tenant's site.
     Uses Deep Scraper v2: WordPress REST API + WooCommerce + structured knowledge extraction.
     Set clear_existing=True to wipe old sources first (recommended for re-scrape)."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
     if not tenant.domain:
         raise HTTPException(status_code=400, detail="Tenant has no domain set")
 
@@ -435,9 +432,7 @@ async def update_tenant(
     db: AsyncSession = Depends(get_db),
 ):
     """Update tenant settings."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     if body.name is not None:
         tenant.name = body.name

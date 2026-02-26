@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, TenantStatus
 from app.models.conversation import Conversation, ConversationStatus
@@ -191,10 +192,7 @@ async def change_tenant_domain(
     """
     from app.models.monitor import MonitorCheck
 
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     old_domain = tenant.domain
     tenant.domain = domain
@@ -227,10 +225,7 @@ async def get_embed_config(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the embed configuration for a tenant — used by plugins and integrations."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     return {
         "tenant_id": str(tenant.id),

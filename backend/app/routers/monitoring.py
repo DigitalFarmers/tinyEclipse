@@ -394,10 +394,8 @@ async def resolve_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/setup/{tenant_id}")
 async def setup_monitoring(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Setup default monitoring checks for a tenant based on their domain."""
-    from app.models.tenant import Tenant
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    from app.helpers import get_tenant_safe
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
     if not tenant.domain:
         raise HTTPException(status_code=400, detail="Tenant has no domain configured")
 

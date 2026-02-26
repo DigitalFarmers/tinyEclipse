@@ -13,6 +13,7 @@ from sqlalchemy import select, desc, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
@@ -60,9 +61,7 @@ async def get_events_timeline(
     - sale: E-commerce event (if tracked)
     """
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     events = []

@@ -16,6 +16,7 @@ from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.client_account import ClientAccount
 from app.models.tenant import Tenant, TenantStatus, TenantEnvironment
 from app.models.site_module import SiteModule, ModuleType, ModuleStatus
@@ -120,9 +121,7 @@ async def get_sibling_projects(
 ):
     """Get all sibling projects for a tenant (same whmcs_client_id). Used by portal project switcher.
     Filters out staging tenants — clients only see production."""
-    tenant = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     result = await db.execute(
         select(Tenant)
@@ -187,9 +186,7 @@ async def detect_tenant_modules(
 ):
     """Auto-detect modules on a tenant's site by scanning the domain."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant or not tenant.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain set")
+    tenant = await get_tenant_safe(db, tenant_id, require_domain=True)
 
     detected = await detect_modules(tenant.domain)
 
@@ -249,9 +246,7 @@ async def add_module(
 ):
     """Manually add a module to a tenant."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     module = SiteModule(
         tenant_id=tid,

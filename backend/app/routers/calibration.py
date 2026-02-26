@@ -11,6 +11,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant
 from app.services.geo_enrichment import enrich_tenant_geo, _calculate_calibration_score
@@ -47,9 +48,7 @@ async def enrich_geo(tenant_id: str, db: AsyncSession = Depends(get_db)):
 async def update_geo(tenant_id: str, body: GeoUpdateRequest, db: AsyncSession = Depends(get_db)):
     """Manually set geo context for a tenant."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     geo = dict(tenant.geo_context) if tenant.geo_context else {}
     if body.city:
@@ -84,9 +83,7 @@ async def update_geo(tenant_id: str, body: GeoUpdateRequest, db: AsyncSession = 
 async def get_calibration(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Get calibration status and geo context for a tenant."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     # Recalculate score
     score = _calculate_calibration_score(tenant.geo_context or {}, tenant)

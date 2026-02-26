@@ -15,6 +15,7 @@ from sqlalchemy import select, func, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant, TenantStatus, PlanType
 from app.models.monitor import MonitorCheck, MonitorResult, Alert, CheckStatus
@@ -170,10 +171,7 @@ async def bulk_update_plan(body: BulkPlanUpdate, db: AsyncSession = Depends(get_
 
     for tid in body.tenant_ids:
         try:
-            tenant = await db.get(Tenant, uuid.UUID(tid))
-            if not tenant:
-                errors.append({"tenant_id": tid, "error": "not found"})
-                continue
+            tenant = await get_tenant_safe(db, tid)
             tenant.plan = PlanType(body.plan)
             updated.append(tid)
         except Exception as e:
@@ -266,9 +264,7 @@ async def get_audit_log(limit: int = 100):
 async def tenant_stats(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Comprehensive stats for a single tenant — everything in one call."""
     tid = uuid.UUID(tenant_id)
-    tenant = await db.get(Tenant, tid)
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, tenant_id)
 
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)

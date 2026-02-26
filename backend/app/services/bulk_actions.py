@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client_account import ClientAccount
 from app.models.tenant import Tenant
+from app.helpers import get_tenant_safe
 from app.models.source import Source, SourceStatus, SourceType
 from app.models.embedding import Embedding
 from app.models.knowledge_gap import KnowledgeGap, GapStatus
@@ -106,10 +107,10 @@ async def transfer_knowledge(
     source_types: Optional[List[str]] = None,
 ) -> Dict:
     """Copy knowledge sources from one domain to another sibling domain."""
-    from_tenant = await db.get(Tenant, from_tenant_id)
-    to_tenant = await db.get(Tenant, to_tenant_id)
-
-    if not from_tenant or not to_tenant:
+    try:
+        from_tenant = await get_tenant_safe(db, str(from_tenant_id))
+        to_tenant = await get_tenant_safe(db, str(to_tenant_id))
+    except Exception:
         return {"error": "Een of beide domeinen niet gevonden"}
 
     # Verify they're siblings (same client account)

@@ -13,6 +13,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
 from app.models.tenant import Tenant
 
@@ -55,9 +56,7 @@ _heartbeats: Dict[str, dict] = {}
 @public_router.post("/ping")
 async def heartbeat_ping(body: HeartbeatPing, request: Request, db: AsyncSession = Depends(get_db)):
     """Receive a heartbeat ping from a site. Called periodically by the WP plugin or embed script."""
-    tenant = await db.get(Tenant, uuid.UUID(body.tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await get_tenant_safe(db, body.tenant_id)
 
     now = datetime.now(timezone.utc)
     ip = request.client.host if request.client else None

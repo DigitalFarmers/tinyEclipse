@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.helpers import get_tenant_safe
 from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
@@ -26,10 +27,7 @@ TIMEOUT = 20
 
 
 async def _tenant(tenant_id: str, db: AsyncSession) -> Tenant:
-    t = await db.get(Tenant, uuid.UUID(tenant_id))
-    if not t or not t.domain:
-        raise HTTPException(status_code=404, detail="Tenant not found or no domain")
-    return t
+    return await get_tenant_safe(db, tenant_id, require_domain=True)
 
 
 async def _get(tenant: Tenant, path: str, params: Optional[Dict] = None) -> Union[Dict, List]:
