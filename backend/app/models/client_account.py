@@ -33,4 +33,4 @@ class ClientAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    tenants = relationship("Tenant", back_populates="client_account", lazy="select")
+    tenants = relationship("Tenant", back_populates="client_account", lazy="selectin")

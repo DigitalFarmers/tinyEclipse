@@ -38,4 +38,4 @@ class Source(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="sources")
-    embeddings = relationship("Embedding", back_populates="source", lazy="select", cascade="all, delete-orphan")
+    embeddings = relationship("Embedding", back_populates="source", lazy="selectin", cascade="all, delete-orphan")
