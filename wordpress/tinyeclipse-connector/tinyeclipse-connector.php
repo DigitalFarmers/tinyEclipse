@@ -72,6 +72,28 @@ function tinyeclipse_is_staging() {
     return false;
 }
 
+// ── Staging noindex: prevent search engines from indexing staging/dev/test sites ──
+if (tinyeclipse_is_staging()) {
+    // WP 5.7+ robots API
+    add_filter('wp_robots', function ($robots) {
+        $robots['noindex']  = true;
+        $robots['nofollow'] = true;
+        return $robots;
+    }, 99999);
+
+    // Fallback meta tag for WP < 5.7
+    add_action('wp_head', function () {
+        echo '<meta name="robots" content="noindex, nofollow" />' . "\n";
+    }, 1);
+
+    // X-Robots-Tag HTTP header (covers non-HTML resources too)
+    add_action('send_headers', function () {
+        if (!headers_sent()) {
+            header('X-Robots-Tag: noindex, nofollow', true);
+        }
+    });
+}
+
 function tinyeclipse_send_event($module_type, $event_type, $title, $description = '', $data = [], $source_url = '') {
     $tenant_id = tinyeclipse_get_tenant_id();
     if (empty($tenant_id)) return;
