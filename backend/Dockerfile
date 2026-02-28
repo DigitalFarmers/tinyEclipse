@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+ARG CACHE_BUST=0
+
 WORKDIR /app
 
 # Install system dependencies
