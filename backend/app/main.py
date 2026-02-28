@@ -143,3 +143,18 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/debug/routes")
+async def debug_routes():
+    """Temporary diagnostic: list all registered routes."""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "methods") and hasattr(route, "path"):
+            routes.append({"path": route.path, "methods": list(route.methods)})
+    monitoring_routes = [r for r in routes if "monitoring" in r["path"]]
+    return {
+        "total_routes": len(routes),
+        "monitoring_routes": monitoring_routes,
+        "has_widget_check": any("widget-check" in r["path"] for r in routes),
+    }
