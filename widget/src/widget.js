@@ -389,29 +389,34 @@
     const style = document.createElement("style");
     style.textContent = `
       #te-widget-container {
-        position: fixed;
-        ${isRight ? "right: 20px;" : "left: 20px;"}
-        ${isTop ? "top: 20px;" : "bottom: 20px;"}
-        z-index: 999999;
+        position: fixed !important;
+        ${isRight ? "right: 20px !important;" : "left: 20px !important;"}
+        ${isTop ? "top: 20px !important;" : "bottom: 20px !important;"}
+        z-index: 999999 !important;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 14px;
         line-height: 1.5;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
       }
 
       /* ─── Toggle Button ─── */
       #te-toggle-btn {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: ${THEME_COLOR};
-        border: none;
-        cursor: pointer;
-        display: flex;
+        width: 60px !important;
+        height: 60px !important;
+        border-radius: 50% !important;
+        background: ${THEME_COLOR} !important;
+        border: none !important;
+        cursor: pointer !important;
+        display: flex !important;
         align-items: center;
         justify-content: center;
         box-shadow: 0 4px 24px ${THEME_COLOR}44;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
+        visibility: visible !important;
+        opacity: 1 !important;
       }
       #te-toggle-btn:hover {
         transform: scale(1.08);
@@ -1068,10 +1073,15 @@
 
   // ─── Initialize ───
   function init() {
-    injectStyles();
-    buildWidget();
-    startSession();
-    setupBehaviorTracking();
+    try {
+      injectStyles();
+      buildWidget();
+    } catch (e) {
+      console.error("[TinyEclipse] Widget build failed:", e);
+      return;
+    }
+    try { startSession(); } catch (e) { console.warn("[TinyEclipse] Session start failed:", e); }
+    try { setupBehaviorTracking(); } catch (e) { console.warn("[TinyEclipse] Behavior tracking failed:", e); }
     // Async boot from Mother Brain (non-blocking)
     bootFromCloud();
   }
