@@ -1,3 +1,4 @@
+/** BUILD_MARKER_20260301_0130 */
 /**
  * TinyEclipse Smart Widget v2.0
  * AI Chat + Visitor Tracking + Proactive Help + Behavior Monitoring
