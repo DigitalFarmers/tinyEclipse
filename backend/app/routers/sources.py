@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db, async_session
 from app.helpers import get_tenant_safe
 from app.middleware.auth import verify_admin_key
+from sqlalchemy import delete as sa_delete
+
 from app.models.source import Source, SourceType, SourceStatus
+from app.models.embedding import Embedding
 from app.models.tenant import Tenant
 from app.services.embeddings import ingest_source
 from app.services.scraper import scrape_url, scrape_sitemap
@@ -163,21 +166,46 @@ async def scrape_site(
     tenant_id: str,
     url: str,
     background_tasks: BackgroundTasks,
+    fresh: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
-    """Scrape an entire site (via sitemap) and create sources for each page."""
+    """Scrape an entire site (via sitemap) and create sources for each page.
+    
+    If fresh=True, deletes all existing URL sources for this tenant first.
+    Otherwise skips URLs that already exist.
+    """
     tenant = await get_tenant_safe(db, tenant_id)
+    tid = tenant.id
+
+    if fresh:
+        # Delete embeddings for URL sources, then delete the sources
+        url_source_ids = (await db.execute(
+            select(Source.id).where(Source.tenant_id == tid, Source.type == SourceType.url)
+        )).scalars().all()
+        if url_source_ids:
+            await db.execute(sa_delete(Embedding).where(Embedding.source_id.in_(url_source_ids)))
+            await db.execute(sa_delete(Source).where(Source.id.in_(url_source_ids)))
+            await db.flush()
+        logger.info("scrape_site_fresh_cleanup", tenant_id=str(tid), deleted=len(url_source_ids))
+
+    # Get existing URLs to skip duplicates
+    existing_urls = set((await db.execute(
+        select(Source.url).where(Source.tenant_id == tid, Source.type == SourceType.url)
+    )).scalars().all())
 
     urls = await scrape_sitemap(url)
     if not urls:
-        # If no sitemap, just add the base URL
         urls = [url]
 
     created = []
+    skipped = 0
     for page_url in urls:
+        if page_url in existing_urls:
+            skipped += 1
+            continue
         source = Source(
             id=uuid.uuid4(),
-            tenant_id=tenant_uuid,
+            tenant_id=tid,
             type=SourceType.url,
             url=page_url,
             title=page_url,
@@ -190,5 +218,39 @@ async def scrape_site(
     return {
         "status": "scraping_started",
         "sources_created": len(created),
+        "skipped_existing": skipped,
         "source_ids": created,
     }
+
+
+@router.delete("/{source_id}")
+async def delete_source(
+    source_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a source and its embeddings."""
+    sid = uuid.UUID(source_id)
+    source = await db.get(Source, sid)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    await db.execute(sa_delete(Embedding).where(Embedding.source_id == sid))
+    await db.delete(source)
+    await db.commit()
+    return {"status": "deleted", "source_id": source_id}
+
+
+@router.delete("/tenant/{tenant_id}/failed")
+async def delete_failed_sources(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all failed sources for a tenant."""
+    tid = uuid.UUID(tenant_id)
+    failed_ids = (await db.execute(
+        select(Source.id).where(Source.tenant_id == tid, Source.status == SourceStatus.failed)
+    )).scalars().all()
+    if failed_ids:
+        await db.execute(sa_delete(Embedding).where(Embedding.source_id.in_(failed_ids)))
+        await db.execute(sa_delete(Source).where(Source.id.in_(failed_ids)))
+        await db.commit()
+    return {"status": "cleaned", "deleted": len(failed_ids)}

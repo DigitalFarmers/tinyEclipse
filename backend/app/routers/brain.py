@@ -77,8 +77,8 @@ async def list_gaps(
             {
                 "id": str(g.id),
                 "question": g.question,
-                "category": g.category.value if g.category else "other",
-                "status": g.status.value if g.status else "open",
+                "category": g.category if g.category else "other",
+                "status": g.status if g.status else "open",
                 "frequency": g.frequency,
                 "avg_confidence": round(g.avg_confidence, 3),
                 "escalated": g.escalated,

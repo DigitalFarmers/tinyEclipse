@@ -113,7 +113,7 @@ async def persist_knowledge_gap(
 
     try:
         from app.services.event_bus import emit
-        await emit(db, domain="ai", action="knowledge_gap_new", title=f"New gap: {question[:120]}", severity="warning", tenant_id=tenant_id, source="brain", data={"category": gap.category.value, "confidence": confidence, "escalated": escalated})
+        await emit(db, domain="ai", action="knowledge_gap_new", title=f"New gap: {question[:120]}", severity="warning", tenant_id=tenant_id, source="brain", data={"category": gap.category, "confidence": confidence, "escalated": escalated})
     except Exception:
         pass
 
@@ -319,7 +319,7 @@ async def get_knowledge_health(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
             {
                 "id": str(g.id),
                 "question": g.question,
-                "category": g.category.value if g.category else "other",
+                "category": g.category if g.category else "other",
                 "frequency": g.frequency,
                 "avg_confidence": round(g.avg_confidence, 3),
                 "escalated": g.escalated,
