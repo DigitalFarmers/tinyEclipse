@@ -179,90 +179,105 @@ async def resolve_gap(
 async def get_knowledge_health(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     """Calculate the AI's knowledge health score for a tenant.
 
-    Returns a comprehensive health report with scores and recommendations.
+    Fully defensive — each query section wrapped so partial results still return.
     """
     tid = tenant_id
+    source_count = 0
+    embedding_count = 0
+    open_gaps = 0
+    resolved_gaps = 0
+    top_gaps = []
+    conv_count = 0
+    avg_confidence = 0
+    escalated_count = 0
+    total_responses = 1
+    category_dist = {}
 
     # Count knowledge sources
-    source_count = (await db.execute(
-        select(func.count(Source.id)).where(and_(Source.tenant_id == tid, Source.status == SourceStatus.indexed))
-    )).scalar() or 0
+    try:
+        source_count = (await db.execute(
+            select(func.count(Source.id)).where(and_(Source.tenant_id == tid, Source.status == SourceStatus.indexed))
+        )).scalar() or 0
+    except Exception as e:
+        logger.warning(f"brain_health: sources query failed: {e}")
 
     # Count embeddings (chunks)
-    embedding_count = (await db.execute(
-        select(func.count(Embedding.id)).where(Embedding.tenant_id == tid)
-    )).scalar() or 0
+    try:
+        embedding_count = (await db.execute(
+            select(func.count(Embedding.id)).where(Embedding.tenant_id == tid)
+        )).scalar() or 0
+    except Exception as e:
+        logger.warning(f"brain_health: embeddings query failed: {e}")
 
-    # Count open gaps
-    open_gaps = (await db.execute(
-        select(func.count(KnowledgeGap.id)).where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
-    )).scalar() or 0
-
-    # Count resolved gaps
-    resolved_gaps = (await db.execute(
-        select(func.count(KnowledgeGap.id)).where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.resolved.value))
-    )).scalar() or 0
-
-    # Top recurring gaps (most frequently asked unanswered questions)
-    top_gaps_result = await db.execute(
-        select(KnowledgeGap)
-        .where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
-        .order_by(desc(KnowledgeGap.frequency))
-        .limit(10)
-    )
-    top_gaps = top_gaps_result.scalars().all()
+    # Count open/resolved gaps
+    try:
+        open_gaps = (await db.execute(
+            select(func.count(KnowledgeGap.id)).where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
+        )).scalar() or 0
+        resolved_gaps = (await db.execute(
+            select(func.count(KnowledgeGap.id)).where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.resolved.value))
+        )).scalar() or 0
+        top_gaps_result = await db.execute(
+            select(KnowledgeGap)
+            .where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
+            .order_by(desc(KnowledgeGap.frequency))
+            .limit(10)
+        )
+        top_gaps = top_gaps_result.scalars().all()
+        category_dist_result = await db.execute(
+            select(KnowledgeGap.category, func.count(KnowledgeGap.id))
+            .where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
+            .group_by(KnowledgeGap.category)
+        )
+        category_dist = {row[0]: row[1] for row in category_dist_result.all()}
+    except Exception as e:
+        logger.warning(f"brain_health: gaps query failed: {e}")
 
     # Conversation stats (last 30 days)
     month_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    conv_count = (await db.execute(
-        select(func.count(Conversation.id)).where(and_(
-            Conversation.tenant_id == tid, Conversation.created_at >= month_ago
-        ))
-    )).scalar() or 0
+    try:
+        conv_count = (await db.execute(
+            select(func.count(Conversation.id)).where(and_(
+                Conversation.tenant_id == tid, Conversation.created_at >= month_ago
+            ))
+        )).scalar() or 0
+    except Exception as e:
+        logger.warning(f"brain_health: conversations query failed: {e}")
 
-    # Average confidence (last 30 days)
-    avg_conf_result = await db.execute(
-        select(func.avg(Message.confidence)).where(and_(
-            Message.tenant_id == tid,
-            Message.role == MessageRole.assistant,
-            Message.confidence.isnot(None),
-            Message.created_at >= month_ago,
-        ))
-    )
-    avg_confidence = avg_conf_result.scalar() or 0
-
-    # Escalation rate
-    escalated_count = (await db.execute(
-        select(func.count(Message.id)).where(and_(
-            Message.tenant_id == tid,
-            Message.escalated == True,
-            Message.created_at >= month_ago,
-        ))
-    )).scalar() or 0
-
-    total_responses = (await db.execute(
-        select(func.count(Message.id)).where(and_(
-            Message.tenant_id == tid,
-            Message.role == MessageRole.assistant,
-            Message.created_at >= month_ago,
-        ))
-    )).scalar() or 1
+    # Average confidence + escalation rate (last 30 days)
+    try:
+        avg_conf_result = await db.execute(
+            select(func.avg(Message.confidence)).where(and_(
+                Message.tenant_id == tid,
+                Message.role == MessageRole.assistant,
+                Message.confidence.isnot(None),
+                Message.created_at >= month_ago,
+            ))
+        )
+        avg_confidence = avg_conf_result.scalar() or 0
+        escalated_count = (await db.execute(
+            select(func.count(Message.id)).where(and_(
+                Message.tenant_id == tid,
+                Message.escalated == True,
+                Message.created_at >= month_ago,
+            ))
+        )).scalar() or 0
+        total_responses = (await db.execute(
+            select(func.count(Message.id)).where(and_(
+                Message.tenant_id == tid,
+                Message.role == MessageRole.assistant,
+                Message.created_at >= month_ago,
+            ))
+        )).scalar() or 1
+    except Exception as e:
+        logger.warning(f"brain_health: messages query failed: {e}")
 
     escalation_rate = escalated_count / max(total_responses, 1)
 
-    # Gap categories distribution
-    category_dist_result = await db.execute(
-        select(KnowledgeGap.category, func.count(KnowledgeGap.id))
-        .where(and_(KnowledgeGap.tenant_id == tid, KnowledgeGap.status == GapStatus.open.value))
-        .group_by(KnowledgeGap.category)
-    )
-    category_dist = {row[0]: row[1] for row in category_dist_result.all()}
-
     # ── Calculate health score (0-100) ──
-    # Factors: source coverage, confidence, escalation rate, gap resolution
-    source_score = min(100, source_count * 5)  # 20 sources = 100
+    source_score = min(100, source_count * 5)
     confidence_score = avg_confidence * 100 if avg_confidence else 0
-    escalation_score = max(0, 100 - escalation_rate * 500)  # 0% = 100, 20% = 0
+    escalation_score = max(0, 100 - escalation_rate * 500)
     gap_resolution_score = (resolved_gaps / max(resolved_gaps + open_gaps, 1)) * 100
 
     health_score = round(
@@ -275,35 +290,15 @@ async def get_knowledge_health(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     # ── Self-improvement suggestions ──
     suggestions = []
     if source_count < 5:
-        suggestions.append({
-            "priority": "high",
-            "action": "add_knowledge",
-            "message": "De AI heeft nog maar weinig kennisbronnen. Voeg productinfo, FAQ's en bedrijfsinformatie toe.",
-        })
+        suggestions.append({"priority": "high", "action": "add_knowledge", "message": "De AI heeft nog maar weinig kennisbronnen. Voeg productinfo, FAQ's en bedrijfsinformatie toe."})
     if open_gaps > 5:
-        suggestions.append({
-            "priority": "high",
-            "action": "resolve_gaps",
-            "message": f"Er zijn {open_gaps} onbeantwoorde vragen. Los de meest gestelde eerst op.",
-        })
+        suggestions.append({"priority": "high", "action": "resolve_gaps", "message": f"Er zijn {open_gaps} onbeantwoorde vragen. Los de meest gestelde eerst op."})
     if avg_confidence < 0.6 and conv_count > 5:
-        suggestions.append({
-            "priority": "high",
-            "action": "improve_context",
-            "message": "De AI antwoordt met lage zekerheid. Voeg meer gedetailleerde informatie toe over je producten en diensten.",
-        })
+        suggestions.append({"priority": "high", "action": "improve_context", "message": "De AI antwoordt met lage zekerheid. Voeg meer gedetailleerde informatie toe over je producten en diensten."})
     if escalation_rate > 0.15:
-        suggestions.append({
-            "priority": "medium",
-            "action": "reduce_escalations",
-            "message": f"Escalatiepercentage is {escalation_rate:.0%}. Voeg antwoorden toe voor veelgestelde vragen.",
-        })
+        suggestions.append({"priority": "medium", "action": "reduce_escalations", "message": f"Escalatiepercentage is {escalation_rate:.0%}. Voeg antwoorden toe voor veelgestelde vragen."})
     if not suggestions:
-        suggestions.append({
-            "priority": "low",
-            "action": "maintain",
-            "message": "De AI presteert goed! Blijf kennisbronnen up-to-date houden.",
-        })
+        suggestions.append({"priority": "low", "action": "maintain", "message": "De AI presteert goed! Blijf kennisbronnen up-to-date houden."})
 
     return {
         "health_score": health_score,
