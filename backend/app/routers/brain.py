@@ -32,7 +32,11 @@ router = APIRouter(prefix="/api/admin/brain", tags=["brain"])
 @router.get("/health/{tenant_id}")
 async def brain_health(tenant_id: str, db: AsyncSession = Depends(get_db)):
     """Get AI knowledge health score and self-improvement suggestions."""
-    return await get_knowledge_health(db, uuid.UUID(tenant_id))
+    try:
+        return await get_knowledge_health(db, uuid.UUID(tenant_id))
+    except Exception as e:
+        logger.error(f"brain_health_error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ═══════════════════════════════════════════════════════════════

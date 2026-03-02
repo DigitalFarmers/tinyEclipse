@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Force rebuild code layer
-ARG CACHE_BUST=20260228a
+ARG CACHE_BUST=20260302a
 RUN echo "build: $CACHE_BUST"
 
 # Copy application
